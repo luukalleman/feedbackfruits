@@ -17,19 +17,9 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-import textwrap
-import os
 
 load_dotenv(find_dotenv())
-# openai_api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings()
-
-
-# def get_questions_from_summary(summary, num_questions=5):
-#     # Ask GPT-3 to generate questions about the summary
-#     question_prompt = f"Generate {num_questions} questions about the following summary: {summary}"
-#     questions, _ = get_response_from_query(db, question_prompt)
-#     return questions.split("\n")  # Assume each question is on a new line
 
 
 def summarize_text(db):
@@ -93,17 +83,15 @@ def get_response_from_query(db, query, k=4):
 
 
 def main():
-    #load_dotenv()
     # Initialize variables
+    knowledge_base = None
+    db = None
+    
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
 
     if 'user_question' not in st.session_state:
         st.session_state.user_question = ""
-        
-    knowledge_base = None
-    db = None
-
 
     st.set_page_config(page_title="Study Material Learner")
     st.image("https://assets.website-files.com/5e318ddf83dd66053d55c38a/602ba7efd5e8b761ed988e2a_FBF%20logo%20wide.png",
@@ -114,12 +102,6 @@ def main():
     This app allows you to upload a PDF or input a YouTube video URL and ask questions about its content. 
     After you upload a PDF or input a YouTube URL, it will be processed and you will be able to ask any question about the content.
     """)
-
-    # if 'conversation_history' not in st.session_state:
-    #     st.session_state.conversation_history = []
-
-    # if 'user_question' not in st.session_state:
-    #     st.session_state.user_question = ""
 
     option = st.selectbox('Choose your option',
                           ('Select', 'PDF', 'YouTube Video'))
@@ -132,6 +114,7 @@ def main():
 
         if 'user_question' not in st.session_state:
             st.session_state.user_question = ""
+            
         user_question = st.sidebar.text_input(
             "Ask a question about your PDF:", value=st.session_state.user_question)
 
@@ -140,8 +123,8 @@ def main():
         if pdf is not None:
             pdf_reader = PdfReader(pdf)
             progress.progress(10)
-
             text = ""
+            
             for page in pdf_reader.pages:
                 text += page.extract_text()
 
@@ -156,9 +139,9 @@ def main():
                 chunk_overlap=200,
                 length_function=len
             )
+            
             chunks = text_splitter.split_text(text)
             progress.progress(40)
-
             embeddings = OpenAIEmbeddings()
             knowledge_base = FAISS.from_texts(chunks, embeddings)
             progress.progress(60)
@@ -166,16 +149,13 @@ def main():
             if user_question and ask_button_clicked:
                 st.session_state.conversation_history.append(
                     ('You', user_question))
-
                 docs = knowledge_base.similarity_search(user_question)
-
                 llm = OpenAI()
                 chain = load_qa_chain(llm, chain_type="stuff")
                 
                 with get_openai_callback() as cb:
                     response = chain.run(
                         input_documents=docs, question=user_question)
-                    print(cb)
                     
                 progress.progress(80)
 
@@ -196,13 +176,6 @@ def main():
 
             db = FAISS.from_texts([summary], embeddings)
 
-            # Generate questions from the summary
-            # with st.expander("Quiz questions"):
-            #     if db is not None:
-            #         questions = get_questions_from_summary(db, summary)
-            #         for i, question in enumerate(questions, start=1):
-            #             st.markdown(f"**Question {i}:** {question}")
-
     db = None  # Initialize db
 
     if option == 'YouTube Video':
@@ -210,12 +183,18 @@ def main():
 
         # If a URL is entered, embed the video and process it
         if youtube_url:
-            # Embed the YouTube video
-            st.video(youtube_url)
-
             # Process the YouTube video transcript as you did in your existing code
             db = create_db_from_youtube_video_url(youtube_url)
-
+            
+            # Ask for a summary of the YouTube video
+            summary_question = "Can you summarize this video for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand. Please use emoji's to make it cleaner. "
+            with st.expander("Summary of YouTube video"):
+                summary, _ = get_response_from_query(db, summary_question)
+                # st.session_state.conversation_history.append(('Bot', summary))
+                st.write(summary)
+            
+            # Embed the YouTube video
+            st.video(youtube_url)
             # Ask a question about the YouTube video
             youtube_question = st.sidebar.text_input(
                 "Ask a question about the YouTube video:", value=st.session_state.user_question)
@@ -232,13 +211,6 @@ def main():
 
                 # Clear the text input box
                 st.session_state.user_question = ""
-
-            # Ask for a summary of the YouTube video
-            summary_question = "Can you summarize this video for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand. Please use emoji's to make it cleaner. "
-            with st.expander("Summarise YouTube video"):
-                summary, _ = get_response_from_query(db, summary_question)
-                # st.session_state.conversation_history.append(('Bot', summary))
-                st.write(summary)
 
     # Only display the conversation section if there are any questions in the conversation history
     
