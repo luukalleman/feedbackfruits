@@ -21,6 +21,39 @@ from langchain.prompts.chat import (
 load_dotenv(find_dotenv())
 embeddings = OpenAIEmbeddings()
 
+def generate_questions(summary):
+    """
+    This function takes a summary as input and generates 5 questions using the OpenAI model.
+    """
+
+    # Initialize the OpenAI chat model
+    chat = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.2)
+
+    # Prompt for generating questions
+    prompt = f"I have read a text about the following topic: {summary}. Please generate 5 questions based on the content."
+
+    # Template to use for the system message prompt
+    template = """
+        You are a helpful assistant that can generate questions based on the provided text: {docs}
+        
+        Your task is to generate 5 meaningful questions that relate to the content of the text.
+        """
+
+    system_message_prompt = SystemMessagePromptTemplate.from_template(template)
+
+    # We wrap the system message into a ChatPromptTemplate
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt])
+
+    # Generate questions
+    chain = LLMChain(llm=chat, prompt=chat_prompt)
+    questions = chain.run(question=prompt, docs=summary)
+
+    # Assume the model returns the questions separated by newlines, split them
+    questions = questions.split('\n')
+
+    return questions
+
+
 
 def summarize_text(db):
     # Use the logic of question answering to ask the model to summarize the text
@@ -99,8 +132,10 @@ def main():
 
     st.title("Ask Your PDF or YouTube Video")
     st.write("""
-    This app allows you to upload a PDF or input a YouTube video URL and ask questions about its content. 
-    After you upload a PDF or input a YouTube URL, it will be processed and you will be able to ask any question about the content.
+    This is a tool specifically designed to accelerate learning for students, making their study experience more interactive. 
+    It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes. 
+    These quizzes are automatically generated from the student's provided study materials. 
+    This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
 
     option = st.selectbox('Choose your option',
@@ -174,7 +209,16 @@ def main():
                 summary = summarize_text(knowledge_base)
                 st.write(summary)
 
-            db = FAISS.from_texts([summary], embeddings)
+                db = FAISS.from_texts([summary], embeddings)
+
+                # Generate questions based on the summary
+            questions = generate_questions(summary)
+
+                # Add a button to show the questions
+            with st.expander('Show Generated Questions'):
+                for question in questions:
+                    st.write(question)
+
 
     db = None  # Initialize db
 
