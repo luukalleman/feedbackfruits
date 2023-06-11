@@ -25,9 +25,16 @@ load_dotenv(find_dotenv())
 embeddings = OpenAIEmbeddings()
 
 
+# def get_questions_from_summary(summary, num_questions=5):
+#     # Ask GPT-3 to generate questions about the summary
+#     question_prompt = f"Generate {num_questions} questions about the following summary: {summary}"
+#     questions, _ = get_response_from_query(db, question_prompt)
+#     return questions.split("\n")  # Assume each question is on a new line
+
+
 def summarize_text(db):
     # Use the logic of question answering to ask the model to summarize the text
-    summary_question = "Can you summarize this content?"
+    summary_question = "Can you summarize this text for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand, so use new lines etc. Please use emoji's to make it cleaner."
     summary, _ = get_response_from_query(db, summary_question)
     return summary
 
@@ -86,8 +93,19 @@ def get_response_from_query(db, query, k=4):
 
 
 def main():
-    load_dotenv()
-    st.set_page_config(page_title="Ask your PDF or YouTube Video")
+    #load_dotenv()
+    # Initialize variables
+    if 'conversation_history' not in st.session_state:
+        st.session_state.conversation_history = []
+
+    if 'user_question' not in st.session_state:
+        st.session_state.user_question = ""
+        
+    knowledge_base = None
+    db = None
+
+
+    st.set_page_config(page_title="Study Material Learner")
     st.image("https://assets.website-files.com/5e318ddf83dd66053d55c38a/602ba7efd5e8b761ed988e2a_FBF%20logo%20wide.png",
              caption='Study Material Learner', use_column_width=True)
 
@@ -97,11 +115,11 @@ def main():
     After you upload a PDF or input a YouTube URL, it will be processed and you will be able to ask any question about the content.
     """)
 
-    if 'conversation_history' not in st.session_state:
-        st.session_state.conversation_history = []
+    # if 'conversation_history' not in st.session_state:
+    #     st.session_state.conversation_history = []
 
-    if 'user_question' not in st.session_state:
-        st.session_state.user_question = ""
+    # if 'user_question' not in st.session_state:
+    #     st.session_state.user_question = ""
 
     option = st.selectbox('Choose your option',
                           ('Select', 'PDF', 'YouTube Video'))
@@ -116,6 +134,8 @@ def main():
             st.session_state.user_question = ""
         user_question = st.sidebar.text_input(
             "Ask a question about your PDF:", value=st.session_state.user_question)
+
+        ask_button_clicked = st.sidebar.button('Ask')
 
         if pdf is not None:
             pdf_reader = PdfReader(pdf)
@@ -142,8 +162,8 @@ def main():
             embeddings = OpenAIEmbeddings()
             knowledge_base = FAISS.from_texts(chunks, embeddings)
             progress.progress(60)
-
-            if user_question and st.sidebar.button('Ask'):
+            
+            if user_question and ask_button_clicked:
                 st.session_state.conversation_history.append(
                     ('You', user_question))
 
@@ -151,16 +171,19 @@ def main():
 
                 llm = OpenAI()
                 chain = load_qa_chain(llm, chain_type="stuff")
+                
                 with get_openai_callback() as cb:
                     response = chain.run(
                         input_documents=docs, question=user_question)
                     print(cb)
+                    
                 progress.progress(80)
 
                 try:
                     progress.progress(100)
                     st.session_state.conversation_history.append(
                         ('Bot', response))
+                    
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 
@@ -170,6 +193,15 @@ def main():
             with st.expander('Summarise PDF'):
                 summary = summarize_text(knowledge_base)
                 st.write(summary)
+
+            db = FAISS.from_texts([summary], embeddings)
+
+            # Generate questions from the summary
+            # with st.expander("Quiz questions"):
+            #     if db is not None:
+            #         questions = get_questions_from_summary(db, summary)
+            #         for i, question in enumerate(questions, start=1):
+            #             st.markdown(f"**Question {i}:** {question}")
 
     db = None  # Initialize db
 
@@ -188,7 +220,10 @@ def main():
             youtube_question = st.sidebar.text_input(
                 "Ask a question about the YouTube video:", value=st.session_state.user_question)
 
-            if youtube_question and st.sidebar.button('Ask YouTube Question'):
+            ask_youtube_button_clicked = st.sidebar.button(
+                'Ask YouTube Question')
+
+            if youtube_question and ask_youtube_button_clicked:
                 st.session_state.conversation_history.append(
                     ('You', youtube_question))
 
@@ -198,20 +233,26 @@ def main():
                 # Clear the text input box
                 st.session_state.user_question = ""
 
-        # Ask for a summary of the YouTube video
-            summary_question = "Can you summarize this YouTube video for me?"
+            # Ask for a summary of the YouTube video
+            summary_question = "Can you summarize this video for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand. Please use emoji's to make it cleaner. "
             with st.expander("Summarise YouTube video"):
                 summary, _ = get_response_from_query(db, summary_question)
                 # st.session_state.conversation_history.append(('Bot', summary))
                 st.write(summary)
 
-    st.sidebar.markdown("## Conversation")
-    for role, message in st.session_state.conversation_history:
-        if role == 'Bot':
-            st.sidebar.markdown(
-                f'<div style="color: #6c757d;">{role}: {message}</div>', unsafe_allow_html=True)
-        else:
-            st.sidebar.markdown(f"{role}: {message}")
+    # Only display the conversation section if there are any questions in the conversation history
+    
+    if 'conversation_history' not in st.session_state:
+        st.session_state.conversation_history = []
+
+    if st.session_state.conversation_history:
+        st.sidebar.markdown("## Conversation")
+        for role, message in st.session_state.conversation_history:
+            if role == 'Bot':
+                st.sidebar.markdown(
+                    f'<div style="color: #6c757d;">{role}: {message}</div>', unsafe_allow_html=True)
+            else:
+                st.sidebar.markdown(f"{role}: {message}")
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "fbf-video",
-    "slug": "fbf-video",
+    "name": "StudyMaterialLearner",
+    "slug": "StudyMaterialLearner",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
