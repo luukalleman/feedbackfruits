@@ -24,6 +24,10 @@ embeddings = OpenAIEmbeddings()
 
 
 def check_answer(question, user_answer, model_answer):
+    # Return False if the user's answer is empty
+    if not user_answer.strip():
+        return False
+
     # Create a conversation with the model
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -40,6 +44,7 @@ def check_answer(question, user_answer, model_answer):
     is_correct = "yes" in response['choices'][0]['message']['content'].lower()
 
     return is_correct
+
 
 
 def generate_questions(summary):
@@ -235,14 +240,24 @@ def main():
         # Generate questions based on the summary
         questions = generate_questions(summary)
 
-        # Display each question with a corresponding text box for the answer
+        if 'answers' not in st.session_state:
+            st.session_state.answers = {}
+
+        # Inside the 'Generated Questions' expander:
         with st.expander('Generated Questions'):
             for idx, question in enumerate(questions, start=1):
                 st.write(f"Q{idx}: {question}")
                 user_answer = st.text_input(f"Your Answer for Q{idx}")
 
-                # Add a button to check the answer
-                if st.button(f'Check Answer for Q{idx}'):
+                # Store the user's answer in the session state
+                st.session_state.answers[idx] = {'question': question, 'answer': user_answer}
+
+            # Add a button to check all answers
+            if st.button('Check All Answers'):
+                for idx, data in st.session_state.answers.items():
+                    question = data['question']
+                    user_answer = data['answer']
+
                     is_correct = check_answer(question, user_answer, summary)
                     if is_correct:
                         st.success(f'Your answer for Q{idx} is correct!')
