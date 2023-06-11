@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import streamlit as st
+import openai
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -20,6 +21,26 @@ from langchain.prompts.chat import (
 
 load_dotenv(find_dotenv())
 embeddings = OpenAIEmbeddings()
+
+
+def check_answer(question, user_answer, model_answer):
+    # Create a conversation with the model
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": f"The question is: {question}"},
+        {"role": "user", "content": f"The model's answer is: {model_answer}"},
+        {"role": "user", "content": f"The user's answer is: {user_answer}"},
+        {"role": "user", "content": "Do the answers match?"}
+    ]
+
+    # Get the model's response
+    response = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
+
+    # Check if the model thinks the answers match
+    is_correct = "yes" in response['choices'][0]['message']['content'].lower()
+
+    return is_correct
+
 
 def generate_questions(summary):
     """
@@ -204,20 +225,29 @@ def main():
 
                 st.session_state.user_question = ""
 
-        if knowledge_base:
-            with st.expander('Summarise PDF'):
-                summary = summarize_text(knowledge_base)
-                st.write(summary)
+    if knowledge_base:
+        with st.expander('Summarise PDF'):
+            summary = summarize_text(knowledge_base)
+            st.write(summary)
 
-                db = FAISS.from_texts([summary], embeddings)
+            db = FAISS.from_texts([summary], embeddings)
 
-                # Generate questions based on the summary
-            questions = generate_questions(summary)
+        # Generate questions based on the summary
+        questions = generate_questions(summary)
 
-                # Add a button to show the questions
-            with st.expander('Show Generated Questions'):
-                for question in questions:
-                    st.write(question)
+        # Display each question with a corresponding text box for the answer
+        with st.expander('Generated Questions'):
+            for idx, question in enumerate(questions, start=1):
+                st.write(f"Q{idx}: {question}")
+                user_answer = st.text_input(f"Your Answer for Q{idx}")
+
+                # Add a button to check the answer
+                if st.button(f'Check Answer for Q{idx}'):
+                    is_correct = check_answer(question, user_answer, summary)
+                    if is_correct:
+                        st.success(f'Your answer for Q{idx} is correct!')
+                    else:
+                        st.error(f'Your answer for Q{idx} is incorrect.')
 
 
     db = None  # Initialize db
