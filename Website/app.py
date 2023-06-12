@@ -156,7 +156,7 @@ def main():
     st.image("https://assets.website-files.com/5e318ddf83dd66053d55c38a/602ba7efd5e8b761ed988e2a_FBF%20logo%20wide.png",
              caption='Study Material Learner', use_column_width=True)
 
-    st.title("Ask Your PDF or YouTube Video")
+    st.title("Study Material Learner")
     st.write("""
     This is a tool specifically designed to accelerate learning for students, making their study experience more interactive. 
     It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes. 
