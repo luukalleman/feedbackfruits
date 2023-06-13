@@ -25,7 +25,8 @@ from sentence_transformers import SentenceTransformer
 import scipy.spatial
 
 load_dotenv(find_dotenv())
-openai.api_key = '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'
+openai.api_key = 'put api key here'
+
 # load_dotenv()
 
 embeddings = OpenAIEmbeddings()
@@ -66,47 +67,26 @@ def check_answer(question, user_answer, summary, embeddings):
         return False, model_answer
 
 
-# def check_answer(question, user_answer, model_answer):
-#     # Return False if the user's answer is empty
-#     if not user_answer.strip():
-#         return False
-
-#     # Create a conversation with the model
-#     messages = [
-#         {"role": "system", "content": "You are a helpful assistant."},
-#         {"role": "user", "content": f"The question is: {question}"},
-#         {"role": "user", "content": f"The model's answer is: {model_answer}"},
-#         {"role": "user", "content": f"The user's answer is: {user_answer}"},
-#         {"role": "user", "content": "If you were a teacher, would you accept the user's answer as a correct answer? Give a score from 1 to 10 to show how likely you are to accept it."}
-#     ]
-
-#     # Get the model's response
-#     response = openai.ChatCompletion.create(
-#         model="gpt-3.5-turbo", messages=messages)
-
-#     # Check if the model thinks the answers match
-#     response_text = response['choices'][0]['message']['content'].strip()
-#     try:
-#         similarity_score = float(response_text)
-#     except ValueError:
-#         return False  # If the model's response isn't a number, treat it as incorrect
-
-#     # If the model gives a score of 7 or higher, consider it correct
-#     is_correct = similarity_score >= 7.0
-
-#     return is_correct
-
-
-def generate_questions(summary):
+def generate_questions(summary, difficulty):
     """
-    This function takes a summary as input and generates 5 questions using the OpenAI model.
+    This function takes a summary and difficulty level as input and generates 5 questions using the OpenAI model.
     """
 
     # Initialize the OpenAI chat model
-    chat = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.2)
+    # Adjust the temperature based on the difficulty level
+    if difficulty == 'Easy':
+        temperature = 0.1
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 easy questions based on the content."
 
-    # Prompt for generating questions
-    prompt = f"I have read a text about the following topic: {summary}. Please generate 5 questions based on the content."
+    elif difficulty == 'Average':
+        temperature = 0.2
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 average difficult questions based on the content."
+
+    else:  # difficulty == 'Advanced'
+        temperature = 0.3
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 difficult questions based on the content."
+
+    chat = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature)
 
     # Template to use for the system message prompt
     template = """
@@ -150,7 +130,7 @@ def create_db_from_youtube_video_url(video_url):
     return db
 
 
-def get_response_from_query(db, query, k=4, summary_needed=False):
+def get_response_from_query(db, query, summary_needed, k=4):
     """
     gpt-3.5-turbo can handle up to 4097 tokens. Setting the chunksize to 1000 and k to 4 maximizes
     the number of tokens to analyze.
@@ -304,10 +284,12 @@ def main():
             else:
                 st.write("No summary available")
 
-        # Check if the questions are not already stored in the session_state
+        difficulty = st.selectbox(
+            'Choose your difficulty level', ('Easy', 'Average', 'Advanced'))
+
         if 'questions' not in st.session_state:
-            # Generate questions based on the summary
-            questions = generate_questions(summary)
+            # Generate questions based on the summary and the selected difficulty level
+            questions = generate_questions(summary, difficulty)
             # Store the questions in the session_state
             st.session_state.questions = questions
         else:  # If the questions are already in the session_state, just use them
@@ -344,7 +326,8 @@ def main():
                 else:
                     st.error(f'Your answer for Q{idx} is incorrect.')
                     with st.expander(f'Click to see the correct answer for question {idx}.'):
-                        st.write(correct_answer)
+                        st.write("Question: ", question)
+                        st.write("Correct Answer: ", correct_answer)
 
             # Display the score
             st.write(f"Your score: {score} out of {len(questions)}")
