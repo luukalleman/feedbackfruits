@@ -25,7 +25,7 @@ from sentence_transformers import SentenceTransformer
 import scipy.spatial
 
 load_dotenv(find_dotenv())
-openai.api_key = 'put api key here'
+openai.api_key = 'open ai key'
 
 # load_dotenv()
 
@@ -74,17 +74,26 @@ def generate_questions(summary, difficulty):
 
     # Initialize the OpenAI chat model
     # Adjust the temperature based on the difficulty level
-    if difficulty == 'Easy':
+    # print(difficulty)
+    if difficulty == 1:
         temperature = 0.1
-        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 easy questions based on the content."
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 very easy questions based on the content. make the questions as easy as possible."
 
-    elif difficulty == 'Average':
+    elif difficulty == 2:
         temperature = 0.2
-        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 average difficult questions based on the content."
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 easy questions based on the content. make the questions with a below average difficulty."
 
-    else:  # difficulty == 'Advanced'
+    elif difficulty == 3:
         temperature = 0.3
-        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 difficult questions based on the content."
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 average questions based on the content. make the questions as average as possible."
+
+    elif difficulty == 4:
+        temperature = 0.4
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 pretty hard questions based on the content. make the questions pretty hard to understand, but not too much."
+
+    elif difficulty == 5:
+        temperature = 0.5
+        prompt = f"I have read a text about the following topic: {summary}. Please generate 5 very hard questions based on the content. make the questions as hard as possible."
 
     chat = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature)
 
@@ -110,9 +119,21 @@ def generate_questions(summary, difficulty):
     return questions
 
 
-def summarize_text(db):
+def summarize_text(db, summary_detail):
     # Use the logic of question answering to ask the model to summarize the text
-    summary_question = "Can you summarize this text for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand, so use new lines etc. Please use emoji's to make it cleaner."
+
+    # Determine max_length based on the summary_detail
+    if summary_detail == 1:
+        summary_question = "Can you give me a simple, easy-to-understand summary of this text? Just cover the main points briefly."
+    elif summary_detail == 2:
+        summary_question = "Can you provide a summary of this text that includes important details but remains fairly concise?"
+    elif summary_detail == 3:
+        summary_question = "Can you summarize this text for me, covering all key points and some finer details? Aim for a balance between brevity and comprehensiveness."
+    elif summary_detail == 4:
+        summary_question = "Can you provide a detailed summary of this text, digging deeper into the main points and also touching on the less crucial aspects?"
+    elif summary_detail == 5:
+        summary_question = "Can you provide a very in-depth summary of this text, including as many details as possible? Leave nothing important out."
+
     summary, _ = get_response_from_query(
         db, summary_question, summary_needed=True)
     return summary
@@ -264,78 +285,71 @@ def main():
 
                 st.session_state.user_question = ""
 
-    if knowledge_base:
-        # Place the expander outside the if-statement
         with st.expander('Summarise PDF'):
-            # Check if the summary is already stored in the session_state
+            st.session_state.summary_detail = st.slider(
+                'Set the detail level of your summary', 1, 5, 3)
             if 'summary' in st.session_state:
-                # If the summary is already in the session_state, just use it
                 summary = st.session_state.summary
                 st.write(summary)
             elif knowledge_base:
-                # Generate the summary
-                summary = summarize_text(knowledge_base)
-                # Store the summary in the session_state
+                summary = summarize_text(
+                    knowledge_base, st.session_state.summary_detail)
                 st.session_state.summary = summary
-                # Display the summary in the expander
                 st.write(summary)
-                # Create the database from the summary
                 db = FAISS.from_texts([summary], embeddings)
             else:
                 st.write("No summary available")
 
-        difficulty = st.selectbox(
-            'Choose your difficulty level', ('Easy', 'Average', 'Advanced'))
+        st.session_state.difficulty = st.slider(
+            'Set the difficulty level of your quiz questions', 1, 5)
 
-        if 'questions' not in st.session_state:
-            # Generate questions based on the summary and the selected difficulty level
-            questions = generate_questions(summary, difficulty)
-            # Store the questions in the session_state
+        # Check for changes in difficulty level or the Generate Questions button being pressed
+        if 'last_difficulty' in st.session_state and st.session_state.difficulty != st.session_state.last_difficulty:
+            st.session_state.last_difficulty = st.session_state.difficulty
+            questions = generate_questions(
+                st.session_state.summary, st.session_state.difficulty)
             st.session_state.questions = questions
-        else:  # If the questions are already in the session_state, just use them
-            questions = st.session_state.questions
+        elif st.button("Generate Questions"):
+            questions = generate_questions(
+                st.session_state.summary, st.session_state.difficulty)
+            st.session_state.questions = questions
 
         if 'answers' not in st.session_state:
             st.session_state.answers = {}
 
-    # Inside the 'Generated Questions' expander:
-    # with st.expander('Generated Questions'):
-        st.write('Generated Questions')
-        for idx, question in enumerate(questions, start=1):
-            st.write(f"Q{idx}: {question}")
-            user_answer = st.text_input(f"Your Answer for Q{idx}")
+        if 'questions' not in st.session_state:
+            st.session_state.questions = []
 
-            # Store the user's answer in the session state
-            st.session_state.answers[idx] = {
-                'question': question, 'answer': user_answer}
+        if st.session_state.questions:  # Check if questions exist
+            st.write('Generated Questions')
+            for idx, question in enumerate(st.session_state.questions, start=1):
+                st.write(f"Q{idx}: {question}")
+                user_answer = st.text_input(f"Your Answer for Q{idx}")
+                st.session_state.answers[idx] = {
+                    'question': question, 'answer': user_answer}
 
-        # Initialize the score variable
-        score = 0
+            score = 0
 
-        if st.button('Check All Answers'):
-            for idx, data in st.session_state.answers.items():
-                question = data['question']
-                user_answer = data['answer']
+            if st.button('Check All Answers'):
+                for idx, data in st.session_state.answers.items():
+                    question = data['question']
+                    user_answer = data['answer']
+                    is_correct, correct_answer = check_answer(
+                        question, user_answer, st.session_state.summary, embeddings)
+                    if is_correct:
+                        score += 1
+                        st.success(f'Your answer for Q{idx} is correct!')
+                    else:
+                        st.error(f'Your answer for Q{idx} is incorrect.')
+                        with st.expander(f'Click to see the correct answer for question {idx}.'):
+                            st.write("Question: ", question)
+                            st.write("Correct Answer: ", correct_answer)
 
-                # Use the check_answer function
-                is_correct, correct_answer = check_answer(
-                    question, user_answer, summary, embeddings)
-                if is_correct:
-                    score += 1
-                    st.success(f'Your answer for Q{idx} is correct!')
-                else:
-                    st.error(f'Your answer for Q{idx} is incorrect.')
-                    with st.expander(f'Click to see the correct answer for question {idx}.'):
-                        st.write("Question: ", question)
-                        st.write("Correct Answer: ", correct_answer)
-
-            # Display the score
-            st.write(f"Your score: {score} out of {len(questions)}")
-
-            # Display a progress bar for the score
-            progress_bar = st.progress(0)
-            progress_percentage = score / len(questions)
-            progress_bar.progress(progress_percentage)
+                st.write(
+                    f"Your score: {score} out of {len(st.session_state.questions)}")
+                progress_bar = st.progress(0)
+                progress_percentage = score / len(st.session_state.questions)
+                progress_bar.progress(progress_percentage)
 
     db = None  # Initialize db
 
