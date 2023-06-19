@@ -25,9 +25,8 @@ from sentence_transformers import SentenceTransformer
 import scipy.spatial
 
 load_dotenv(find_dotenv())
-openai.api_key = 'open ai key'
+openai.api_key = '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'
 
-# load_dotenv()
 
 embeddings = OpenAIEmbeddings()
 
@@ -71,10 +70,6 @@ def generate_questions(summary, difficulty):
     """
     This function takes a summary and difficulty level as input and generates 5 questions using the OpenAI model.
     """
-
-    # Initialize the OpenAI chat model
-    # Adjust the temperature based on the difficulty level
-    # print(difficulty)
     if difficulty == 1:
         temperature = 0.1
         prompt = f"I have read a text about the following topic: {summary}. Please generate 5 very easy questions based on the content. make the questions as easy as possible."
@@ -120,8 +115,6 @@ def generate_questions(summary, difficulty):
 
 
 def summarize_text(db, summary_detail):
-    # Use the logic of question answering to ask the model to summarize the text
-
     # Determine max_length based on the summary_detail
     if summary_detail == 1:
         summary_question = "Can you give me a simple, easy-to-understand summary of this text? Just cover the main points briefly."
@@ -137,18 +130,6 @@ def summarize_text(db, summary_detail):
     summary, _ = get_response_from_query(
         db, summary_question, summary_needed=True)
     return summary
-
-
-def create_db_from_youtube_video_url(video_url):
-    loader = YoutubeLoader.from_youtube_url(video_url)
-    transcript = loader.load()
-
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000, chunk_overlap=100)
-    docs = text_splitter.split_documents(transcript)
-
-    db = FAISS.from_documents(docs, embeddings)
-    return db
 
 
 def get_response_from_query(db, query, summary_needed, k=4):
@@ -201,6 +182,9 @@ def main():
     knowledge_base = None
     db = None
 
+    if 'checked_answers' not in st.session_state:
+        st.session_state.checked_answers = {}
+
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
 
@@ -213,20 +197,23 @@ def main():
 
     st.title("Study Material Learner")
     st.write("""
-    This is a tool specifically designed to accelerate learning for students, making their study experience more interactive. 
-    It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes. 
-    These quizzes are automatically generated from the student's provided study materials. 
+    This is a tool specifically designed to accelerate learning for students, making their study experience more interactive.
+    It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes.
+    These quizzes are automatically generated from the student's provided study materials.
     This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
 
-    option = st.selectbox('Choose your option',
-                          ('Select', 'PDF', 'YouTube Video'))
-
+    # option = st.selectbox('Choose your option',
+    #                       ('Select', 'PDF', 'YouTube Video'))
+    option = 'PDF'
     progress = st.progress(0)
     knowledge_base = None  # Initialize knowledge_base
-
     if option == 'PDF':
         pdf = st.sidebar.file_uploader("Upload your PDF", type="pdf")
+
+        if pdf is None:
+            st.write("Please add a PDF before seeing details.")
+            return  # Ends the function execution if no PDF has been uploaded
 
         if 'user_question' not in st.session_state:
             st.session_state.user_question = ""
@@ -244,8 +231,8 @@ def main():
             for page in pdf_reader.pages:
                 text += page.extract_text()
 
-            with st.expander("Click to see PDF file text"):
-                st.write(text)
+            # with st.expander("Click to see PDF file text"):
+            #     st.write(text)
 
             progress.progress(20)
 
@@ -257,10 +244,10 @@ def main():
             )
 
             chunks = text_splitter.split_text(text)
-            progress.progress(40)
+            progress.progress(30)
             embeddings = OpenAIEmbeddings()
             knowledge_base = FAISS.from_texts(chunks, embeddings)
-            progress.progress(60)
+            progress.progress(40)
 
             if user_question and ask_button_clicked:
                 st.session_state.conversation_history.append(
@@ -273,10 +260,10 @@ def main():
                     response = chain.run(
                         input_documents=docs, question=user_question)
 
-                progress.progress(80)
+                progress.progress(50)
 
                 try:
-                    progress.progress(100)
+                    progress.progress(60)
                     st.session_state.conversation_history.append(
                         ('Bot', response))
 
@@ -285,34 +272,39 @@ def main():
 
                 st.session_state.user_question = ""
 
-        with st.expander('Summarise PDF'):
-            st.session_state.summary_detail = st.slider(
-                'Set the detail level of your summary', 1, 5, 3)
-            if 'summary' in st.session_state:
-                summary = st.session_state.summary
-                st.write(summary)
-            elif knowledge_base:
-                summary = summarize_text(
-                    knowledge_base, st.session_state.summary_detail)
-                st.session_state.summary = summary
-                st.write(summary)
-                db = FAISS.from_texts([summary], embeddings)
-            else:
-                st.write("No summary available")
+        st.session_state.summary_detail = st.slider(
+            'Set the detail level of your summary', 1, 5, 3)
 
         st.session_state.difficulty = st.slider(
-            'Set the difficulty level of your quiz questions', 1, 5)
+            'Set the difficulty level of your quiz questions', 1, 5, 3)
 
+        generate_material = st.button("Generate Material")
         # Check for changes in difficulty level or the Generate Questions button being pressed
-        if 'last_difficulty' in st.session_state and st.session_state.difficulty != st.session_state.last_difficulty:
+        if 'last_difficulty' not in st.session_state:
             st.session_state.last_difficulty = st.session_state.difficulty
+
+        if 'last_summary_detail' not in st.session_state:
+            st.session_state.last_summary_detail = st.session_state.summary_detail
+
+        if generate_material or st.session_state.difficulty != st.session_state.last_difficulty or st.session_state.summary_detail != st.session_state.last_summary_detail:
+            st.session_state.last_difficulty = st.session_state.difficulty
+            st.session_state.last_summary_detail = st.session_state.summary_detail
+
+            with st.expander('Summary of PDF'):
+                if knowledge_base:
+                    summary = summarize_text(
+                        knowledge_base, st.session_state.summary_detail)
+                    st.session_state.summary = summary
+                    st.write(summary)
+                    db = FAISS.from_texts([summary], embeddings)
+                    progress.progress(70)
+                else:
+                    st.write("No summary available")
+
             questions = generate_questions(
                 st.session_state.summary, st.session_state.difficulty)
             st.session_state.questions = questions
-        elif st.button("Generate Questions"):
-            questions = generate_questions(
-                st.session_state.summary, st.session_state.difficulty)
-            st.session_state.questions = questions
+            progress.progress(100)
 
         if 'answers' not in st.session_state:
             st.session_state.answers = {}
@@ -336,15 +328,27 @@ def main():
                     user_answer = data['answer']
                     is_correct, correct_answer = check_answer(
                         question, user_answer, st.session_state.summary, embeddings)
-                    if is_correct:
-                        score += 1
-                        st.success(f'Your answer for Q{idx} is correct!')
-                    else:
-                        st.error(f'Your answer for Q{idx} is incorrect.')
-                        with st.expander(f'Click to see the correct answer for question {idx}.'):
-                            st.write("Question: ", question)
-                            st.write("Correct Answer: ", correct_answer)
+                    # Store the results instead of displaying them immediately
+                    st.session_state.checked_answers[idx] = {
+                        'is_correct': is_correct, 'correct_answer': correct_answer}
 
+            # Display the checked answers whether or not the user just checked them
+            for idx, data in st.session_state.checked_answers.items():
+                is_correct = data['is_correct']
+                correct_answer = data['correct_answer']
+                if is_correct:
+                    st.success(f'Your answer for Q{idx} is correct!')
+                else:
+                    st.error(f'Your answer for Q{idx} is incorrect.')
+                    with st.expander(f'Click to see the correct answer for question {idx}.'):
+                        question = st.session_state.answers[idx]['question']
+                        st.write("Question: ", question)
+                        st.write("Correct Answer: ", correct_answer)
+
+            # Only display score and progress if all answers are checked
+            if len(st.session_state.checked_answers) == len(st.session_state.questions):
+                score = len(
+                    [data for data in st.session_state.checked_answers.values() if data['is_correct']])
                 st.write(
                     f"Your score: {score} out of {len(st.session_state.questions)}")
                 progress_bar = st.progress(0)
@@ -352,42 +356,6 @@ def main():
                 progress_bar.progress(progress_percentage)
 
     db = None  # Initialize db
-
-    if option == 'YouTube Video':
-        youtube_url = st.sidebar.text_input("Enter YouTube video URL:")
-
-        # If a URL is entered, embed the video and process it
-        if youtube_url:
-            # Process the YouTube video transcript as you did in your existing code
-            db = create_db_from_youtube_video_url(youtube_url)
-
-            # Ask for a summary of the YouTube video
-            summary_question = "Can you summarize this video for me? Make sure to be specific and explain the most important subjects in high detail. Use a nice layout so it's easier to understand. Please use emoji's to make it cleaner. "
-            with st.expander("Summary of YouTube video"):
-                summary, _ = get_response_from_query(
-                    db, summary_question, summary_needed=True)
-                # st.session_state.conversation_history.append(('Bot', summary))
-                st.write(summary)
-
-            # Embed the YouTube video
-            st.video(youtube_url)
-            # Ask a question about the YouTube video
-            youtube_question = st.sidebar.text_input(
-                "Ask a question about the YouTube video:", value=st.session_state.user_question)
-
-            ask_youtube_button_clicked = st.sidebar.button(
-                'Ask YouTube Question')
-
-            if youtube_question and ask_youtube_button_clicked:
-                st.session_state.conversation_history.append(
-                    ('You', youtube_question))
-
-                response, docs = get_response_from_query(
-                    db, youtube_question, summary_needed=False)
-                st.session_state.conversation_history.append(('Bot', response))
-
-                # Clear the text input box
-                st.session_state.user_question = ""
 
     # Only display the conversation section if there are any questions in the conversation history
 
