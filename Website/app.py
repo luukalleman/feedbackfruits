@@ -25,7 +25,7 @@ from sentence_transformers import SentenceTransformer
 import scipy.spatial
 
 load_dotenv(find_dotenv())
-openai.api_key = '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'
+openai.api_key = 'key here'
 
 
 embeddings = OpenAIEmbeddings()
