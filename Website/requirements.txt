@@ -8,7 +8,7 @@ sentence_transformers==2.0.0
 scipy==1.7.1
 python-docx==0.8.11
 python-pptx==0.6.21
-huggingface_hub==0.0.8
+huggingface_hub==0.0.12  # Adjusted to resolve conflicts
 numpy==1.22.0
 transformers==4.10.0
 tiktoken==0.4.0  # Package needed for OpenAIEmbeddings
