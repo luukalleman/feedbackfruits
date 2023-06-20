@@ -23,7 +23,7 @@ from pptx import Presentation
 import time
 
 load_dotenv(find_dotenv())
-openai_key = st.secrets["openai"]["OPENAI_API_KEY"]
+openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
 print(openai.api_key)  # for debugging purposes, remember to remove it later.
 
 
