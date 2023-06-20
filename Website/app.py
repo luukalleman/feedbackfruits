@@ -24,7 +24,7 @@ import time
 
 
 
-embeddings = OpenAIEmbeddings()
+
 
 
 def check_answer(question, user_answer, summary, embeddings):
@@ -195,6 +195,8 @@ def main():
     # Initialize variables
     knowledge_base = None
     db = None
+    embeddings = OpenAIEmbeddings()
+    st.write("LUUK")
     print("LUUK")
     load_dotenv(find_dotenv())
     openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
