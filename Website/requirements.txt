@@ -10,3 +10,4 @@ python-docx==0.8.11  # Add the version you're using
 python-pptx==0.6.21  # Add the version you're using
 huggingface_hub==0.0.8
 numpy==1.22.0
+transformers==4.10.0
