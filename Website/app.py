@@ -218,10 +218,10 @@ def main():
     This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
     embeddings = OpenAIEmbeddings()
-    st.write("LUUK")
     print("LUUK")
     load_dotenv(find_dotenv())
     openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+    st.write(openai.api_key)
     print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
     progress = st.progress(0)
