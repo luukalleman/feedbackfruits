@@ -22,7 +22,13 @@ from docx import Document
 from pptx import Presentation
 import time
 
-
+#embeddings = OpenAIEmbeddings()
+print("LUUK")
+load_dotenv(find_dotenv())
+openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+key = openai.api_key
+embeddings = OpenAIEmbeddings(key)
+print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
 
 
@@ -217,14 +223,7 @@ def main():
     These quizzes are automatically generated from the student's provided study materials.
     This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
-    #embeddings = OpenAIEmbeddings()
-    print("LUUK")
-    load_dotenv(find_dotenv())
-    openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-    key = openai.api_key
-    embeddings = OpenAIEmbeddings(key)
-    st.write(openai.api_key)
-    print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
+
 
     progress = st.progress(0)
     knowledge_base = None  # Initialize knowledge_base
