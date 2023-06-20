@@ -11,4 +11,4 @@ python-pptx==0.6.21
 huggingface_hub==0.0.8
 numpy==1.22.0
 transformers==4.10.0
-tiktoken==0.0.8  # Package needed for OpenAIEmbeddings
+tiktoken==0.4.0  # Package needed for OpenAIEmbeddings
