@@ -23,7 +23,7 @@ from pptx import Presentation
 import time
 
 load_dotenv(find_dotenv())
-openai.api_key = 'api key here
+openai.api_key = st.secrets["OPENAI_KEY"]
 
 
 embeddings = OpenAIEmbeddings()
