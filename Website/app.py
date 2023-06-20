@@ -195,12 +195,7 @@ def main():
     # Initialize variables
     knowledge_base = None
     db = None
-    embeddings = OpenAIEmbeddings()
-    st.write("LUUK")
-    print("LUUK")
-    load_dotenv(find_dotenv())
-    openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-    print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
+
 
     if 'checked_answers' not in st.session_state:
         st.session_state.checked_answers = {}
@@ -222,6 +217,12 @@ def main():
     These quizzes are automatically generated from the student's provided study materials.
     This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
+    embeddings = OpenAIEmbeddings()
+    st.write("LUUK")
+    print("LUUK")
+    load_dotenv(find_dotenv())
+    openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+    print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
     progress = st.progress(0)
     knowledge_base = None  # Initialize knowledge_base
