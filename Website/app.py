@@ -217,10 +217,11 @@ def main():
     These quizzes are automatically generated from the student's provided study materials.
     This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
     """)
-    embeddings = OpenAIEmbeddings()
+    #embeddings = OpenAIEmbeddings()
     print("LUUK")
     load_dotenv(find_dotenv())
     openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+    embeddings = OpenAIEmbeddings(openai.api_key)
     st.write(openai.api_key)
     print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
