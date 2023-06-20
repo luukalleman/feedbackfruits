@@ -5,9 +5,10 @@ faiss-cpu==1.7.4
 openai==0.27.0
 streamlit==1.18.1
 sentence_transformers==2.0.0
-scipy==1.7.1  # Add the version you're using
-python-docx==0.8.11  # Add the version you're using
-python-pptx==0.6.21  # Add the version you're using
+scipy==1.7.1
+python-docx==0.8.11
+python-pptx==0.6.21
 huggingface_hub==0.0.8
 numpy==1.22.0
 transformers==4.10.0
+tiktoken==0.0.8  # Package needed for OpenAIEmbeddings
