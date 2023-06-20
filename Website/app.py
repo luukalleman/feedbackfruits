@@ -21,10 +21,7 @@ import scipy.spatial
 from docx import Document
 from pptx import Presentation
 import time
-print("LUUK")
-load_dotenv(find_dotenv())
-openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
+
 
 
 embeddings = OpenAIEmbeddings()
@@ -198,6 +195,10 @@ def main():
     # Initialize variables
     knowledge_base = None
     db = None
+    print("LUUK")
+    load_dotenv(find_dotenv())
+    openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+    print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
     if 'checked_answers' not in st.session_state:
         st.session_state.checked_answers = {}
