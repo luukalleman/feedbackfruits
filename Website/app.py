@@ -24,7 +24,7 @@ import time
 
 load_dotenv(find_dotenv())
 openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-print(openai.api_key)  # for debugging purposes, remember to remove it later.
+print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
 
 embeddings = OpenAIEmbeddings()
