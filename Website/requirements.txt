@@ -4,3 +4,7 @@ python-dotenv==1.0.0
 faiss-cpu==1.7.4
 openai==0.27.0
 streamlit==1.18.1
+sentence_transformers==2.0.0
+scipy==1.7.1  # Add the version you're using
+python-docx==0.8.11  # Add the version you're using
+python-pptx==0.6.21  # Add the version you're using
