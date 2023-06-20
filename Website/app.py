@@ -221,7 +221,8 @@ def main():
     print("LUUK")
     load_dotenv(find_dotenv())
     openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-    embeddings = OpenAIEmbeddings(openai.api_key)
+    key = openai.api_key
+    embeddings = OpenAIEmbeddings(key)
     st.write(openai.api_key)
     print("TESTTTTTTTTT: ",openai.api_key)  # for debugging purposes, remember to remove it later.
 
