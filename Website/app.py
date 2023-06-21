@@ -8,8 +8,6 @@ from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms import OpenAI
 from langchain.callbacks import get_openai_callback
-from langchain.document_loaders import YoutubeLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
 from dotenv import find_dotenv, load_dotenv
@@ -18,17 +16,14 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import CountVectorizer
-import matplotlib.pyplot as plt
 from sentence_transformers import SentenceTransformer
 import scipy.spatial
 from docx import Document
+from pptx import Presentation
+import time
 
-load_dotenv(find_dotenv())
-openai.api_key = 'api key here'
-
-
+# embeddings = OpenAIEmbeddings()
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 embeddings = OpenAIEmbeddings()
 
 
@@ -73,6 +68,16 @@ def read_docx(file):
     for para in doc.paragraphs:
         full_text.append(para.text)
     return ' '.join(full_text)
+
+
+def extract_text_from_pptx(file):
+    presentation = Presentation(file)
+    text = ""
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text"):
+                text += shape.text + "\n"
+    return text
 
 
 def generate_questions(summary, difficulty):
@@ -206,43 +211,38 @@ def main():
 
     st.title("Study Material Learner")
     st.write("""
-    This is a tool specifically designed to accelerate learning for students, making their study experience more interactive.
-    It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes.
-    These quizzes are automatically generated from the student's provided study materials.
-    This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
+    This tool is designed to enhance the learning experience for students by providing interactive study resources. 
+    It enables students to extract valuable information from different sources, such as PDF files and lectures, and transforms that information into engaging quizzes. 
+    These quizzes are generated automatically based on the specific study materials provided by the student. By utilizing this tool, students can deepen their understanding of the subjects they are studying and foster their intellectual growth. 
+    It empowers students to actively participate in their learning process and develop their cognitive abilities, ultimately leading to academic success and personal development.
     """)
 
-    # option = st.selectbox('Choose your option',
-    #                       ('Select', 'PDF', 'YouTube Video'))
-    option = st.selectbox('Choose your option', ('Select', 'PDF', 'DOCX'))
     progress = st.progress(0)
     knowledge_base = None  # Initialize knowledge_base
-    if option == 'PDF':
-        pdf = st.sidebar.file_uploader("Upload your PDF", type="pdf")
 
-        if pdf is None:
-            st.write("Please add a PDF before seeing details.")
-            return  # Ends the function execution if no PDF has been uploaded
+    sidebar = st.sidebar
+    file = sidebar.file_uploader("Upload your file", type=[
+                                 "pdf", "docx", "pptx"])
 
-        if 'user_question' not in st.session_state:
-            st.session_state.user_question = ""
+    if file is None:
+        st.write("Please enter your file")
 
-        user_question = st.sidebar.text_input(
-            "Ask a question about your PDF:", value=st.session_state.user_question)
+    if file is not None:
+        # Determine the type of the file
+        filetype = file.type.split('/')[1]
 
-        ask_button_clicked = st.sidebar.button('Ask')
+        if filetype == 'pdf':
+            if file is None:
+                st.write("Please add a PDF before seeing details.")
+                return  # Ends the function execution if no PDF has been uploaded
 
-        if pdf is not None:
-            pdf_reader = PdfReader(pdf)
+            pdf_reader = PdfReader(file)
             progress.progress(10)
             text = ""
 
             for page in pdf_reader.pages:
                 text += page.extract_text()
 
-            # with st.expander("Click to see PDF file text"):
-            #     st.write(text)
-
             progress.progress(20)
 
             text_splitter = CharacterTextSplitter(
@@ -258,195 +258,76 @@ def main():
             knowledge_base = FAISS.from_texts(chunks, embeddings)
             progress.progress(40)
 
-            if user_question and ask_button_clicked:
-                st.session_state.conversation_history.append(
-                    ('You', user_question))
-                docs = knowledge_base.similarity_search(user_question)
-                llm = OpenAI()
-                chain = load_qa_chain(llm, chain_type="stuff")
+            chat_expander = st.expander('Chat with your document')
+            with chat_expander:
 
-                with get_openai_callback() as cb:
-                    response = chain.run(
-                        input_documents=docs, question=user_question)
+                # Create a placeholder for the conversation history
+                conversation_history_placeholder = st.empty()
 
-                progress.progress(50)
+                with st.form(key='chat_form'):
+                    # The input field and button should always be at the bottom of the chat
+                    st.session_state.user_question = st.text_input(
+                        "Ask a question about your PDF:", value=st.session_state.user_question)
+                    submit_button = st.form_submit_button('Ask')
 
-                try:
-                    progress.progress(60)
-                    st.session_state.conversation_history.append(
-                        ('Bot', response))
+                    # Handle the user's question
+                    if st.session_state.user_question and submit_button:
+                        st.session_state.conversation_history.append(
+                            ('You', st.session_state.user_question))
 
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
+                        # Show a progress bar while the bot is processing
+                        progress_bar = st.progress(0)
+                        for i in range(1, 101):
+                            # This represents your long-running process
+                            time.sleep(0.1)
+                            progress_bar.progress(i)
 
-                st.session_state.user_question = ""
+                        docs = knowledge_base.similarity_search(
+                            st.session_state.user_question)
+                        llm = OpenAI()
+                        chain = load_qa_chain(llm, chain_type="stuff")
 
-        st.session_state.summary_detail = st.slider(
-            'Set the detail level of your summary', 1, 5, 3)
+                        with get_openai_callback() as cb:
+                            response = chain.run(
+                                input_documents=docs, question=st.session_state.user_question)
 
-        st.session_state.difficulty = st.slider(
-            'Set the difficulty level of your quiz questions', 1, 5, 3)
+                        try:
+                            st.session_state.conversation_history.append(
+                                ('Bot', response))
+                        except Exception as e:
+                            st.error(f"An error occurred: {e}")
 
-        generate_material = st.button("Generate Material")
-        # Check for changes in difficulty level or the Generate Questions button being pressed
-        if 'last_difficulty' not in st.session_state:
-            st.session_state.last_difficulty = st.session_state.difficulty
+                        st.session_state.user_question = ""
+                        # Remove the progress bar after the bot has responded
+                        progress_bar.empty()
 
-        if 'last_summary_detail' not in st.session_state:
-            st.session_state.last_summary_detail = st.session_state.summary_detail
+                # Display the conversation history
+                if st.session_state.conversation_history:
+                    conversation_html = ""
+                    for role, message in st.session_state.conversation_history:
+                        if role == 'You':
+                            conversation_html += f"<p><b>{role}:</b> {message}</p>"
+                        else:
+                            conversation_html += f"<p><b>🤖:</b> {message}</p>"
 
-        if generate_material or st.session_state.difficulty != st.session_state.last_difficulty or st.session_state.summary_detail != st.session_state.last_summary_detail:
-            st.session_state.last_difficulty = st.session_state.difficulty
-            st.session_state.last_summary_detail = st.session_state.summary_detail
+                    # Update the placeholder with the conversation history
+                    conversation_history_placeholder.markdown(
+                        conversation_html, unsafe_allow_html=True)
 
-            with st.expander('Summary of PDF'):
-                if knowledge_base:
-                    summary = summarize_text(
-                        knowledge_base, st.session_state.summary_detail)
-                    st.session_state.summary = summary
-                    st.write(summary)
-                    db = FAISS.from_texts([summary], embeddings)
-                    progress.progress(70)
-                else:
-                    st.write("No summary available")
-
-            questions = generate_questions(
-                st.session_state.summary, st.session_state.difficulty)
-            st.session_state.questions = questions
-            progress.progress(100)
-
-        if 'answers' not in st.session_state:
-            st.session_state.answers = {}
-
-        if 'questions' not in st.session_state:
-            st.session_state.questions = []
-
-        if st.session_state.questions:  # Check if questions exist
-            st.write('Generated Questions')
-            for idx, question in enumerate(st.session_state.questions, start=1):
-                st.write(f"Q{idx}: {question}")
-                user_answer = st.text_input(f"Your Answer for Q{idx}")
-                st.session_state.answers[idx] = {
-                    'question': question, 'answer': user_answer}
-
-            score = 0
-
-            if st.button('Check All Answers'):
-                for idx, data in st.session_state.answers.items():
-                    question = data['question']
-                    user_answer = data['answer']
-                    is_correct, correct_answer = check_answer(
-                        question, user_answer, st.session_state.summary, embeddings)
-                    # Store the results instead of displaying them immediately
-                    if 'checked_answers' not in st.session_state:  # Add this line
-                        st.session_state.checked_answers = {}  # Add this line
-                    st.session_state.checked_answers[idx] = {
-                        'is_correct': is_correct, 'correct_answer': correct_answer}
-
-            # Display the checked answers whether or not the user just checked them
-            for idx, data in st.session_state.checked_answers.items():
-                is_correct = data['is_correct']
-                correct_answer = data['correct_answer']
-                if is_correct:
-                    st.success(f'Your answer for Q{idx} is correct!')
-                else:
-                    st.error(f'Your answer for Q{idx} is incorrect.')
-                    with st.expander(f'Click to see the correct answer for question {idx}.'):
-                        question = st.session_state.answers[idx]['question']
-                        st.write("Question: ", question)
-                        st.write("Correct Answer: ", correct_answer)
-
-            # Only display score and progress if all answers are checked
-            if len(st.session_state.checked_answers) == len(st.session_state.questions):
-                score = len(
-                    [data for data in st.session_state.checked_answers.values() if data['is_correct']])
-                st.write(
-                    f"Your score: {score} out of {len(st.session_state.questions)}")
-                progress_bar = st.progress(0)
-                progress_percentage = score / len(st.session_state.questions)
-                progress_bar.progress(progress_percentage)
-
-    db = None  # Initialize db
-
-    if option == 'DOCX':
-        docx_file = st.sidebar.file_uploader("Upload your DOCX", type="docx")
-
-        if docx_file is None:
-            st.write("Please add a DOCX before seeing details.")
-            return  # Ends the function execution if no DOCX has been uploaded
-
-        if 'user_question' not in st.session_state:
-            st.session_state.user_question = ""
-
-        user_question = st.sidebar.text_input(
-            "Ask a question about your DOCX:", value=st.session_state.user_question)
-
-        ask_button_clicked = st.sidebar.button('Ask')
-
-        if docx_file is not None:
-            doc = Document(docx_file)
-            progress.progress(10)
-            text = ""
-
-            for para in doc.paragraphs:
-                text += para.text
-
-            progress.progress(20)
-
-            text_splitter = CharacterTextSplitter(
-                separator="\n",
-                chunk_size=1000,
-                chunk_overlap=200,
-                length_function=len
-            )
-
-            chunks = text_splitter.split_text(text)
-            progress.progress(30)
-            embeddings = OpenAIEmbeddings()
-            knowledge_base = FAISS.from_texts(chunks, embeddings)
-            progress.progress(40)
-
-            if user_question and ask_button_clicked:
-                st.session_state.conversation_history.append(
-                    ('You', user_question))
-                docs = knowledge_base.similarity_search(user_question)
-                llm = OpenAI()
-                chain = load_qa_chain(llm, chain_type="stuff")
-
-                with get_openai_callback() as cb:
-                    response = chain.run(
-                        input_documents=docs, question=user_question)
-
-                progress.progress(50)
-
-                try:
-                    progress.progress(60)
-                    st.session_state.conversation_history.append(
-                        ('Bot', response))
-
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
-
-            st.session_state.user_question = ""
-            st.session_state.summary_detail = st.slider(
-                'Set the detail level of your summary', 1, 5, 3)
-
-            st.session_state.difficulty = st.slider(
-                'Set the difficulty level of your quiz questions', 1, 5, 3)
-
-            generate_material = st.button("Generate Material")
-            # Check for changes in difficulty level or the Generate Questions button being pressed
+            st.session_state.summary_detail = None
+            st.session_state.difficulty = None
             if 'last_difficulty' not in st.session_state:
-                st.session_state.last_difficulty = st.session_state.difficulty
-
+                st.session_state.last_difficulty = None
             if 'last_summary_detail' not in st.session_state:
-                st.session_state.last_summary_detail = st.session_state.summary_detail
+                st.session_state.last_summary_detail = None
 
-            if generate_material or st.session_state.difficulty != st.session_state.last_difficulty or st.session_state.summary_detail != st.session_state.last_summary_detail:
-                st.session_state.last_difficulty = st.session_state.difficulty
-                st.session_state.last_summary_detail = st.session_state.summary_detail
-
-                with st.expander('Summary of your DOCX'):
+            summary_expander = st.expander('Summary of PDF')
+            with summary_expander:
+                st.session_state.summary_detail = st.slider(
+                    'Set the detail level of your summary', 1, 5, 3)
+                generate_summary = st.button("Generate Summary")
+                if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
+                    st.session_state.last_summary_detail = st.session_state.summary_detail
                     if knowledge_base:
                         summary = summarize_text(
                             knowledge_base, st.session_state.summary_detail)
@@ -457,76 +338,405 @@ def main():
                     else:
                         st.write("No summary available")
 
-                questions = generate_questions(
-                    st.session_state.summary, st.session_state.difficulty)
-                st.session_state.questions = questions
-                progress.progress(100)
+            questions_expander = st.expander('Generated Questions')
+            with questions_expander:
+                st.session_state.difficulty = st.slider(
+                    'Set the difficulty level of your quiz questions', 1, 5, 3)
 
-            if 'answers' not in st.session_state:
-                st.session_state.answers = {}
+                if 'questions_generated' not in st.session_state:
+                    st.session_state.questions_generated = False
 
-            if 'questions' not in st.session_state:
-                st.session_state.questions = []
+                button_label = "Adjust Difficulty of Questions" if st.session_state.questions_generated else "Generate Questions"
+                generate_questions_button = st.button(button_label)
 
-            if st.session_state.questions:  # Check if questions exist
-                st.write('Generated Questions')
-                for idx, question in enumerate(st.session_state.questions, start=1):
-                    st.write(f"Q{idx}: {question}")
-                    user_answer = st.text_input(f"Your Answer for Q{idx}")
-                    st.session_state.answers[idx] = {
-                        'question': question, 'answer': user_answer}
+                if generate_questions_button:
+                    st.session_state.last_difficulty = st.session_state.difficulty
+                    questions = generate_questions(
+                        st.session_state.summary, st.session_state.difficulty)
+                    st.session_state.questions = questions
+                    st.session_state.answers = {}  # Reset answers state
+                    st.session_state.checked_answers = {}  # Reset checked answers state
+                    st.session_state.questions_generated = True
+                    progress.progress(100)
 
-                score = 0
+                if 'answers' not in st.session_state:
+                    st.session_state.answers = {}
 
-                if st.button('Check All Answers'):
-                    for idx, data in st.session_state.answers.items():
-                        question = data['question']
-                        user_answer = data['answer']
-                        is_correct, correct_answer = check_answer(
-                            question, user_answer, st.session_state.summary, embeddings)
-                        # Store the results instead of displaying them immediately
-                        st.session_state.checked_answers[idx] = {
-                            'is_correct': is_correct, 'correct_answer': correct_answer}
+                if 'questions' not in st.session_state:
+                    st.session_state.questions = []
 
-                # Display the checked answers whether or not the user just checked them
-                for idx, data in st.session_state.checked_answers.items():
-                    is_correct = data['is_correct']
-                    correct_answer = data['correct_answer']
-                    if is_correct:
-                        st.success(f'Your answer for Q{idx} is correct!')
-                    else:
-                        st.error(f'Your answer for Q{idx} is incorrect.')
-                        with st.expander(f'Click to see the correct answer for question {idx}.'):
-                            question = st.session_state.answers[idx]['question']
-                            st.write("Question: ", question)
-                            st.write("Correct Answer: ", correct_answer)
+                if st.session_state.questions:  # Check if questions exist
+                    st.write('Generated Questions')
+                    for idx, question in enumerate(st.session_state.questions, start=1):
+                        st.write(f"Q{idx}: {question}")
+                        if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
+                            user_answer = st.session_state.answers[idx]['answer']
+                            if st.session_state.checked_answers[idx]['is_correct']:
+                                st.markdown(
+                                    f"Your Answer for Q{idx}: **{user_answer}**")
+                                st.success('Your answer is correct!')
+                            else:
+                                st.error('Your answer is incorrect.')
+                                st.markdown(
+                                    f"Your Answer for Q{idx}: **{user_answer}**")
+                                st.markdown(
+                                    f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
+                                st.markdown("---")  # Horizontal rule
 
-                # Only display score and progress if all answers are checked
-                if len(st.session_state.checked_answers) == len(st.session_state.questions):
-                    score = len(
-                        [data for data in st.session_state.checked_answers.values() if data['is_correct']])
-                    st.write(
-                        f"Your score: {score} out of {len(st.session_state.questions)}")
-                    progress_bar = st.progress(0)
-                    progress_percentage = score / \
-                        len(st.session_state.questions)
-                    progress_bar.progress(progress_percentage)
+                        else:
+                            user_answer = st.text_input(
+                                f"Your Answer for Q{idx}")
+                            st.session_state.answers[idx] = {
+                                'question': question, 'answer': user_answer}
 
-    # (same as before from here on out)
+                    score = 0
 
-    # Only display the conversation section if there are any questions in the conversation history
+                    # Check All Answers button only displays if there are unchecked answers
+                    if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
+                        if st.button('Check All Answers'):
+                            for idx, data in st.session_state.answers.items():
+                                question = data['question']
+                                user_answer = data['answer']
+                                is_correct, correct_answer = check_answer(
+                                    question, user_answer, st.session_state.summary, embeddings)
+                                # Store the results instead of displaying them immediately
+                                if 'checked_answers' not in st.session_state:
+                                    st.session_state.checked_answers = {}
+                                st.session_state.checked_answers[idx] = {
+                                    'is_correct': is_correct, 'correct_answer': correct_answer}
 
-    if 'conversation_history' not in st.session_state:
-        st.session_state.conversation_history = []
+                            # Rerun the script to refresh the display after checking all answers
+                            st.experimental_rerun()
 
-    if st.session_state.conversation_history:
-        st.sidebar.markdown("## Conversation")
-        for role, message in st.session_state.conversation_history:
-            if role == 'Bot':
-                st.sidebar.markdown(
-                    f'<div style="color: #6c757d;">{role}: {message}</div>', unsafe_allow_html=True)
-            else:
-                st.sidebar.markdown(f"{role}: {message}")
+                    # Only display score and progress if all answers are checked
+                    if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
+                        score = len(
+                            [data for data in st.session_state.checked_answers.values() if data['is_correct']])
+                        st.write(
+                            f"Your score: {score} out of {len(st.session_state.questions)}")
+                        progress_bar = st.progress(0)
+                        progress_percentage = score / \
+                            len(st.session_state.questions)
+                        progress_bar.progress(progress_percentage)
+
+            db = None  # Initialize db
+
+        elif filetype == 'vnd.openxmlformats-officedocument.wordprocessingml.document':
+            if file is None:
+                st.write("Please add a DOCX before seeing details.")
+                return  # Ends the function execution if no DOCX has been uploaded
+
+            if 'user_question' not in st.session_state:
+                st.session_state.user_question = ""
+
+            user_question = st.sidebar.text_input(
+                "Ask a question about your DOCX:", value=st.session_state.user_question)
+
+            ask_button_clicked = st.sidebar.button('Ask')
+
+            if file is not None:
+                doc = Document(file)
+                progress.progress(10)
+                text = ""
+
+                for para in doc.paragraphs:
+                    text += para.text
+
+                progress.progress(20)
+
+                text_splitter = CharacterTextSplitter(
+                    separator="\n",
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    length_function=len
+                )
+
+                chunks = text_splitter.split_text(text)
+                progress.progress(30)
+                embeddings = OpenAIEmbeddings()
+                knowledge_base = FAISS.from_texts(chunks, embeddings)
+                progress.progress(40)
+
+                if user_question and ask_button_clicked:
+                    st.session_state.conversation_history.append(
+                        ('You', user_question))
+                    docs = knowledge_base.similarity_search(user_question)
+                    llm = OpenAI()
+                    chain = load_qa_chain(llm, chain_type="stuff")
+
+                    with get_openai_callback() as cb:
+                        response = chain.run(
+                            input_documents=docs, question=user_question)
+
+                    progress.progress(50)
+
+                    try:
+                        progress.progress(60)
+                        st.session_state.conversation_history.append(
+                            ('Bot', response))
+
+                    except Exception as e:
+                        st.error(f"An error occurred: {e}")
+
+                st.session_state.summary_detail = None
+                st.session_state.difficulty = None
+                if 'last_difficulty' not in st.session_state:
+                    st.session_state.last_difficulty = None
+                if 'last_summary_detail' not in st.session_state:
+                    st.session_state.last_summary_detail = None
+
+                summary_expander = st.expander('Summary of PDF')
+                with summary_expander:
+                    st.session_state.summary_detail = st.slider(
+                        'Set the detail level of your summary', 1, 5, 3)
+                    generate_summary = st.button("Generate Summary")
+                    if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
+                        st.session_state.last_summary_detail = st.session_state.summary_detail
+                        if knowledge_base:
+                            summary = summarize_text(
+                                knowledge_base, st.session_state.summary_detail)
+                            st.session_state.summary = summary
+                            st.write(summary)
+                            db = FAISS.from_texts([summary], embeddings)
+                            progress.progress(70)
+                        else:
+                            st.write("No summary available")
+
+                questions_expander = st.expander('Generated Questions')
+                with questions_expander:
+                    st.session_state.difficulty = st.slider(
+                        'Set the difficulty level of your quiz questions', 1, 5, 3)
+
+                    if 'questions_generated' not in st.session_state:
+                        st.session_state.questions_generated = False
+
+                    button_label = "Adjust Difficulty of Questions" if st.session_state.questions_generated else "Generate Questions"
+                    generate_questions_button = st.button(button_label)
+
+                    if generate_questions_button:
+                        st.session_state.last_difficulty = st.session_state.difficulty
+                        questions = generate_questions(
+                            st.session_state.summary, st.session_state.difficulty)
+                        st.session_state.questions = questions
+                        st.session_state.answers = {}  # Reset answers state
+                        st.session_state.checked_answers = {}  # Reset checked answers state
+                        st.session_state.questions_generated = True
+                        progress.progress(100)
+
+                    if 'answers' not in st.session_state:
+                        st.session_state.answers = {}
+
+                    if 'questions' not in st.session_state:
+                        st.session_state.questions = []
+
+                    if st.session_state.questions:  # Check if questions exist
+                        st.write('Generated Questions')
+                        for idx, question in enumerate(st.session_state.questions, start=1):
+                            st.write(f"Q{idx}: {question}")
+                            if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
+                                user_answer = st.session_state.answers[idx]['answer']
+                                if st.session_state.checked_answers[idx]['is_correct']:
+                                    st.markdown(
+                                        f"Your Answer for Q{idx}: **{user_answer}**")
+                                    st.success('Your answer is correct!')
+                                else:
+                                    st.error('Your answer is incorrect.')
+                                    st.markdown(
+                                        f"Your Answer for Q{idx}: **{user_answer}**")
+                                    st.markdown(
+                                        f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
+                                    st.markdown("---")  # Horizontal rule
+
+                            else:
+                                user_answer = st.text_input(
+                                    f"Your Answer for Q{idx}")
+                                st.session_state.answers[idx] = {
+                                    'question': question, 'answer': user_answer}
+
+                        score = 0
+
+                        # Check All Answers button only displays if there are unchecked answers
+                        if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
+                            if st.button('Check All Answers'):
+                                for idx, data in st.session_state.answers.items():
+                                    question = data['question']
+                                    user_answer = data['answer']
+                                    is_correct, correct_answer = check_answer(
+                                        question, user_answer, st.session_state.summary, embeddings)
+                                    # Store the results instead of displaying them immediately
+                                    if 'checked_answers' not in st.session_state:
+                                        st.session_state.checked_answers = {}
+                                    st.session_state.checked_answers[idx] = {
+                                        'is_correct': is_correct, 'correct_answer': correct_answer}
+
+                                # Rerun the script to refresh the display after checking all answers
+                                st.experimental_rerun()
+
+                        # Only display score and progress if all answers are checked
+                        if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
+                            score = len(
+                                [data for data in st.session_state.checked_answers.values() if data['is_correct']])
+                            st.write(
+                                f"Your score: {score} out of {len(st.session_state.questions)}")
+                            progress_bar = st.progress(0)
+                            progress_percentage = score / \
+                                len(st.session_state.questions)
+                            progress_bar.progress(progress_percentage)
+
+                db = None  # Initialize db
+
+        elif filetype == 'vnd.openxmlformats-officedocument.presentationml.presentation':
+            user_question = st.sidebar.text_input(
+                "Ask a question about your PPT:", value=st.session_state.user_question)
+
+            ask_button_clicked = st.sidebar.button('Ask')
+
+            if file is not None:
+                text = extract_text_from_pptx(file)
+                progress.progress(20)
+
+                text_splitter = CharacterTextSplitter(
+                    separator="\n",
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    length_function=len
+                )
+
+                chunks = text_splitter.split_text(text)
+                progress.progress(30)
+                embeddings = OpenAIEmbeddings()
+                knowledge_base = FAISS.from_texts(chunks, embeddings)
+                progress.progress(40)
+
+                if user_question and ask_button_clicked:
+                    st.session_state.conversation_history.append(
+                        ('You', user_question))
+                    docs = knowledge_base.similarity_search(user_question)
+                    llm = OpenAI()
+                    chain = load_qa_chain(llm, chain_type="stuff")
+
+                    with get_openai_callback() as cb:
+                        response = chain.run(
+                            input_documents=docs, question=user_question)
+
+                    progress.progress(50)
+
+                    try:
+                        progress.progress(60)
+                        st.session_state.conversation_history.append(
+                            ('Bot', response))
+
+                    except Exception as e:
+                        st.error(f"An error occurred: {e}")
+
+                    st.session_state.user_question = ""
+
+                st.session_state.summary_detail = None
+                st.session_state.difficulty = None
+                if 'last_difficulty' not in st.session_state:
+                    st.session_state.last_difficulty = None
+                if 'last_summary_detail' not in st.session_state:
+                    st.session_state.last_summary_detail = None
+
+                summary_expander = st.expander('Summary of PDF')
+                with summary_expander:
+                    st.session_state.summary_detail = st.slider(
+                        'Set the detail level of your summary', 1, 5, 3)
+                    generate_summary = st.button("Generate Summary")
+                    if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
+                        st.session_state.last_summary_detail = st.session_state.summary_detail
+                        if knowledge_base:
+                            summary = summarize_text(
+                                knowledge_base, st.session_state.summary_detail)
+                            st.session_state.summary = summary
+                            st.write(summary)
+                            db = FAISS.from_texts([summary], embeddings)
+                            progress.progress(70)
+                        else:
+                            st.write("No summary available")
+
+                questions_expander = st.expander('Generated Questions')
+                with questions_expander:
+                    st.session_state.difficulty = st.slider(
+                        'Set the difficulty level of your quiz questions', 1, 5, 3)
+
+                    if 'questions_generated' not in st.session_state:
+                        st.session_state.questions_generated = False
+
+                    button_label = "Adjust Difficulty of Questions" if st.session_state.questions_generated else "Generate Questions"
+                    generate_questions_button = st.button(button_label)
+
+                    if generate_questions_button:
+                        st.session_state.last_difficulty = st.session_state.difficulty
+                        questions = generate_questions(
+                            st.session_state.summary, st.session_state.difficulty)
+                        st.session_state.questions = questions
+                        st.session_state.answers = {}  # Reset answers state
+                        st.session_state.checked_answers = {}  # Reset checked answers state
+                        st.session_state.questions_generated = True
+                        progress.progress(100)
+
+                    if 'answers' not in st.session_state:
+                        st.session_state.answers = {}
+
+                    if 'questions' not in st.session_state:
+                        st.session_state.questions = []
+
+                    if st.session_state.questions:  # Check if questions exist
+                        st.write('Generated Questions')
+                        for idx, question in enumerate(st.session_state.questions, start=1):
+                            st.write(f"Q{idx}: {question}")
+                            if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
+                                user_answer = st.session_state.answers[idx]['answer']
+                                if st.session_state.checked_answers[idx]['is_correct']:
+                                    st.markdown(
+                                        f"Your Answer for Q{idx}: **{user_answer}**")
+                                    st.success('Your answer is correct!')
+                                else:
+                                    st.error('Your answer is incorrect.')
+                                    st.markdown(
+                                        f"Your Answer for Q{idx}: **{user_answer}**")
+                                    st.markdown(
+                                        f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
+                                    st.markdown("---")  # Horizontal rule
+
+                            else:
+                                user_answer = st.text_input(
+                                    f"Your Answer for Q{idx}")
+                                st.session_state.answers[idx] = {
+                                    'question': question, 'answer': user_answer}
+
+                        score = 0
+
+                        # Check All Answers button only displays if there are unchecked answers
+                        if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
+                            if st.button('Check All Answers'):
+                                for idx, data in st.session_state.answers.items():
+                                    question = data['question']
+                                    user_answer = data['answer']
+                                    is_correct, correct_answer = check_answer(
+                                        question, user_answer, st.session_state.summary, embeddings)
+                                    # Store the results instead of displaying them immediately
+                                    if 'checked_answers' not in st.session_state:
+                                        st.session_state.checked_answers = {}
+                                    st.session_state.checked_answers[idx] = {
+                                        'is_correct': is_correct, 'correct_answer': correct_answer}
+
+                                # Rerun the script to refresh the display after checking all answers
+                                st.experimental_rerun()
+
+                        # Only display score and progress if all answers are checked
+                        if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
+                            score = len(
+                                [data for data in st.session_state.checked_answers.values() if data['is_correct']])
+                            st.write(
+                                f"Your score: {score} out of {len(st.session_state.questions)}")
+                            progress_bar = st.progress(0)
+                            progress_percentage = score / \
+                                len(st.session_state.questions)
+                            progress_bar.progress(progress_percentage)
+
+                db = None  # Initialize db
 
 
 if __name__ == '__main__':
