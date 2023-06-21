@@ -22,10 +22,13 @@ from docx import Document
 from pptx import Presentation
 import time
 
+<<<<<<< HEAD
 # embeddings = OpenAIEmbeddings()
+=======
+#embeddings = OpenAIEmbeddings()
+>>>>>>> origin/main
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 embeddings = OpenAIEmbeddings()
-
 
 def check_answer(question, user_answer, summary, embeddings):
     """
@@ -196,6 +199,10 @@ def main():
     knowledge_base = None
     db = None
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
     if 'checked_answers' not in st.session_state:
         st.session_state.checked_answers = {}
 

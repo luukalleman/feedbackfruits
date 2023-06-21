@@ -1,5 +1,14 @@
-langchain==0.0.154
+langchain
 PyPDF2==3.0.1
 python-dotenv==1.0.0
-streamlit==1.18.1
 faiss-cpu==1.7.4
+openai==0.27.0
+streamlit==1.18.1
+sentence_transformers==2.0.0
+scipy==1.7.1
+python-docx==0.8.11
+python-pptx==0.6.21
+huggingface_hub==0.0.12  # Adjusted to resolve conflicts
+numpy==1.22.0
+transformers==4.10.0
+tiktoken==0.4.0  # Package needed for OpenAIEmbeddings
