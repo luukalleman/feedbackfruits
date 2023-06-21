@@ -194,10 +194,6 @@ def main():
     knowledge_base = None
     db = None
 
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/main
     if 'checked_answers' not in st.session_state:
         st.session_state.checked_answers = {}
 
