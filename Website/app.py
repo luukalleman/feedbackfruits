@@ -211,10 +211,10 @@ def main():
 
     st.title("Study Material Learner")
     st.write("""
-    This is a tool specifically designed to accelerate learning for students, making their study experience more interactive.
-    It offers a unique capability to extract information from resources such as PDF files and lectures, and then transform this information into quizzes.
-    These quizzes are automatically generated from the student's provided study materials.
-    This function not only enhances the student's understanding but also contributes to their intellectual growth, making them smarter.
+    This tool is designed to enhance the learning experience for students by providing interactive study resources. 
+    It enables students to extract valuable information from different sources, such as PDF files and lectures, and transforms that information into engaging quizzes. 
+    These quizzes are generated automatically based on the specific study materials provided by the student. By utilizing this tool, students can deepen their understanding of the subjects they are studying and foster their intellectual growth. 
+    It empowers students to actively participate in their learning process and develop their cognitive abilities, ultimately leading to academic success and personal development.
     """)
 
     progress = st.progress(0)
