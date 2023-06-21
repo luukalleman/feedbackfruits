@@ -22,11 +22,6 @@ from docx import Document
 from pptx import Presentation
 import time
 
-<<<<<<< HEAD
-# embeddings = OpenAIEmbeddings()
-=======
-#embeddings = OpenAIEmbeddings()
->>>>>>> origin/main
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 embeddings = OpenAIEmbeddings()
 
