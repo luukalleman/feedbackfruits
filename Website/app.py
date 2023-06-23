@@ -1,4 +1,3 @@
-from dotenv import load_dotenv
 import streamlit as st
 import openai
 from PyPDF2 import PdfReader
@@ -10,7 +9,6 @@ from langchain.llms import OpenAI
 from langchain.callbacks import get_openai_callback
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
-from dotenv import find_dotenv, load_dotenv
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
@@ -24,6 +22,7 @@ import time
 
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 embeddings = OpenAIEmbeddings()
+
 
 def check_answer(question, user_answer, summary, embeddings):
     """
@@ -193,7 +192,6 @@ def main():
     # Initialize variables
     knowledge_base = None
     db = None
-
     if 'checked_answers' not in st.session_state:
         st.session_state.checked_answers = {}
 
@@ -374,7 +372,7 @@ def main():
                                     f"Your Answer for Q{idx}: **{user_answer}**")
                                 st.success('Your answer is correct!')
                             else:
-                                st.error('Your answer is incorrect.')
+                                # st.error('Your answer is incorrect.')
                                 st.markdown(
                                     f"Your Answer for Q{idx}: **{user_answer}**")
                                 st.markdown(
