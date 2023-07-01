@@ -187,6 +187,31 @@ def get_response_from_query(db, query, summary_needed, k=4):
     response = response.replace("\n", "")
     return response, docs
 
+def example_questions(summary):
+    prompt = f"I have read a text about the following topic: {summary}. Please generate 3 simple example questions a student could ask for clarification about the topic based on the content."
+    
+    chat = ChatOpenAI(model_name="gpt-3.5-turbo")
+
+    # Template to use for the system message prompt
+    template = """
+        You are a helpful assistant that can generate questions based on the provided text: {docs}
+        
+        Your task is to generate 3 short example questions that relate to the content of the text.
+        """
+
+    system_message_prompt = SystemMessagePromptTemplate.from_template(template)
+
+    # We wrap the system message into a ChatPromptTemplate
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt])
+
+    # Generate questions
+    chain = LLMChain(llm=chat, prompt=chat_prompt)
+    ex_questions = chain.run(question=prompt, docs=summary)
+
+    # Assume the model returns the questions separated by newlines, split them
+    ex_questions = ex_questions.split('\n')
+
+    return ex_questions
 
 def main():
     # Initialize variables
@@ -216,12 +241,11 @@ def main():
     progress = st.progress(0)
     knowledge_base = None  # Initialize knowledge_base
 
-    sidebar = st.sidebar
-    file = sidebar.file_uploader("Upload your file", type=[
+    file = st.file_uploader("**Upload your file**", type=[
                                  "pdf", "docx", "pptx"])
 
     if file is None:
-        st.write("Please enter your file")
+        st.write("_Please enter your file_")
 
     if file is not None:
         # Determine the type of the file
@@ -254,62 +278,6 @@ def main():
             knowledge_base = FAISS.from_texts(chunks, embeddings)
             progress.progress(40)
 
-            chat_expander = st.expander('Chat with your document')
-            with chat_expander:
-
-                # Create a placeholder for the conversation history
-                conversation_history_placeholder = st.empty()
-
-                with st.form(key='chat_form'):
-                    # The input field and button should always be at the bottom of the chat
-                    st.session_state.user_question = st.text_input(
-                        "Ask a question about your PDF:", value=st.session_state.user_question)
-                    submit_button = st.form_submit_button('Ask')
-
-                    # Handle the user's question
-                    if st.session_state.user_question and submit_button:
-                        st.session_state.conversation_history.append(
-                            ('You', st.session_state.user_question))
-
-                        # Show a progress bar while the bot is processing
-                        progress_bar = st.progress(0)
-                        for i in range(1, 101):
-                            # This represents your long-running process
-                            time.sleep(0.1)
-                            progress_bar.progress(i)
-
-                        docs = knowledge_base.similarity_search(
-                            st.session_state.user_question)
-                        llm = OpenAI()
-                        chain = load_qa_chain(llm, chain_type="stuff")
-
-                        with get_openai_callback() as cb:
-                            response = chain.run(
-                                input_documents=docs, question=st.session_state.user_question)
-
-                        try:
-                            st.session_state.conversation_history.append(
-                                ('Bot', response))
-                        except Exception as e:
-                            st.error(f"An error occurred: {e}")
-
-                        st.session_state.user_question = ""
-                        # Remove the progress bar after the bot has responded
-                        progress_bar.empty()
-
-                # Display the conversation history
-                if st.session_state.conversation_history:
-                    conversation_html = ""
-                    for role, message in st.session_state.conversation_history:
-                        if role == 'You':
-                            conversation_html += f"<p><b>{role}:</b> {message}</p>"
-                        else:
-                            conversation_html += f"<p><b>🤖:</b> {message}</p>"
-
-                    # Update the placeholder with the conversation history
-                    conversation_history_placeholder.markdown(
-                        conversation_html, unsafe_allow_html=True)
-
             st.session_state.summary_detail = None
             st.session_state.difficulty = None
             if 'last_difficulty' not in st.session_state:
@@ -320,7 +288,7 @@ def main():
             summary_expander = st.expander('Summary of PDF')
             with summary_expander:
                 st.session_state.summary_detail = st.slider(
-                    'Set the detail level of your summary', 1, 5, 3)
+                    'Set the lenght of your summary', 1, 5, 3)
                 generate_summary = st.button("Generate Summary")
                 if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
                     st.session_state.last_summary_detail = st.session_state.summary_detail
@@ -328,11 +296,73 @@ def main():
                         summary = summarize_text(
                             knowledge_base, st.session_state.summary_detail)
                         st.session_state.summary = summary
-                        st.write(summary)
+                        if generate_summary:
+                            st.write(summary)
                         db = FAISS.from_texts([summary], embeddings)
                         progress.progress(70)
                     else:
                         st.write("No summary available")
+
+            chat_expander = st.expander('Chat with your document')
+            with chat_expander:
+                # Create a placeholder for the conversation history
+                conversation_history_placeholder = st.empty()
+
+                # Generate example questions
+                if 'ex_questions' not in st.session_state:
+                    ex_questions = example_questions(st.session_state.summary)
+                    st.session_state.ex_questions = ex_questions
+                else:
+                    ex_questions = st.session_state.ex_questions                
+
+                
+                with st.form(key='chat_form'):
+
+                    st.session_state.user_question = st.text_input("Ask a question about your PDF:", value=st.session_state.user_question)
+                    selected_question = st.selectbox(" ", ['What kind of questions could I ask?'] + st.session_state.ex_questions)
+
+                    submit_button = st.form_submit_button('Ask')
+                    if submit_button:
+                        if st.session_state.user_question:
+                            question = st.session_state.user_question
+                        elif selected_question:
+                            question = selected_question
+                        else:
+                            question = None
+
+                        if question:
+                            st.session_state.conversation_history.append(('You', question))
+                            docs = knowledge_base.similarity_search(question)
+                            llm = OpenAI()
+                            chain = load_qa_chain(llm, chain_type="stuff")
+
+                            with get_openai_callback() as cb:
+                                response = chain.run(input_documents=docs, question=question)
+
+                            try:
+                                st.session_state.conversation_history.append(('Bot', response))
+                            except Exception as e:
+                                st.error(f"An error occurred: {e}")
+
+                            st.session_state.user_question = ""
+                            selected_question = ""
+                            st.session_state.ex_questions = ex_questions
+
+                        else:
+                            st.warning("Please enter a question or select an example question.")
+
+                    # Display the conversation history
+                    conversation_html = ""
+                    if st.session_state.conversation_history:
+                        for role, message in st.session_state.conversation_history:
+                            if role == 'You':
+                                conversation_html += f"<p><b>{role}:</b> {message}</p>"
+                            else:
+                                conversation_html += f"<p><b>🤖:</b> {message}</p>"
+
+                    conversation_history_placeholder.markdown(conversation_html, unsafe_allow_html=True)
+
+
 
             questions_expander = st.expander('Generated Questions')
             with questions_expander:
@@ -363,47 +393,54 @@ def main():
 
                 if st.session_state.questions:  # Check if questions exist
                     st.write('Generated Questions')
+                    
                     for idx, question in enumerate(st.session_state.questions, start=1):
                         st.write(f"Q{idx}: {question}")
-                        if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
-                            user_answer = st.session_state.answers[idx]['answer']
-                            if st.session_state.checked_answers[idx]['is_correct']:
-                                st.markdown(
-                                    f"Your Answer for Q{idx}: **{user_answer}**")
-                                st.success('Your answer is correct!')
-                            else:
-                                # st.error('Your answer is incorrect.')
-                                st.markdown(
-                                    f"Your Answer for Q{idx}: **{user_answer}**")
-                                st.markdown(
-                                    f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
-                                st.markdown("---")  # Horizontal rule
+                        user_answer = st.text_input(
+                            f"Your Answer for Q{idx}")
+                        st.session_state.answers[idx] = {
+                            'question': question, 'answer': user_answer}
 
-                        else:
-                            user_answer = st.text_input(
-                                f"Your Answer for Q{idx}")
-                            st.session_state.answers[idx] = {
-                                'question': question, 'answer': user_answer}
+                        check_answere_button_placeholder = st.empty()
+                        check_answere_button = check_answere_button_placeholder.button(f'Check Answer {idx}')
 
-                    score = 0
+                        if check_answere_button == False:
+                            while not check_answere_button:
+                                pass
 
-                    # Check All Answers button only displays if there are unchecked answers
-                    if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
-                        if st.button('Check All Answers'):
-                            for idx, data in st.session_state.answers.items():
-                                question = data['question']
-                                user_answer = data['answer']
-                                is_correct, correct_answer = check_answer(
-                                    question, user_answer, st.session_state.summary, embeddings)
-                                # Store the results instead of displaying them immediately
-                                if 'checked_answers' not in st.session_state:
-                                    st.session_state.checked_answers = {}
-                                st.session_state.checked_answers[idx] = {
-                                    'is_correct': is_correct, 'correct_answer': correct_answer}
+                        check_answere_button_placeholder.empty()
 
-                            # Rerun the script to refresh the display after checking all answers
-                            st.experimental_rerun()
+                        is_correct, correct_answer = check_answer(
+                            question, user_answer, st.session_state.summary, embeddings)
+                        
+                        if is_correct:
+                            st.success("Your answer is correct!")
+                            st.markdown("---")  # Horizontal rule
 
+                        if is_correct == False:
+                            st.markdown("Your answer is **not** correct. The correct answer should be:")
+                            st.markdown(correct_answer)
+                            st.markdown("---")  # Horizontal rule
+                        
+                        if 'checked_answers' not in st.session_state:
+                            st.session_state.checked_answers = {}
+                        st.session_state.checked_answers[idx] = {
+                            'is_correct': is_correct, 'correct_answer': correct_answer}
+                    
+                        next_question_button_placeholder = st.empty()
+                        if idx+1 is not 6:
+                            next_question_button = next_question_button_placeholder.button(f'Question {idx + 1}')
+                        
+                        if idx+1 is 6:
+                            next_question_button = next_question_button_placeholder.button('Check all answers')
+
+                        if next_question_button == False:
+                            while not next_question_button:
+                                pass
+                        
+                        next_question_button_placeholder.empty()
+
+                                       
                     # Only display score and progress if all answers are checked
                     if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
                         score = len(
@@ -422,14 +459,7 @@ def main():
                 st.write("Please add a DOCX before seeing details.")
                 return  # Ends the function execution if no DOCX has been uploaded
 
-            if 'user_question' not in st.session_state:
-                st.session_state.user_question = ""
-
-            user_question = st.sidebar.text_input(
-                "Ask a question about your DOCX:", value=st.session_state.user_question)
-
-            ask_button_clicked = st.sidebar.button('Ask')
-
+            
             if file is not None:
                 doc = Document(file)
                 progress.progress(10)
@@ -452,28 +482,6 @@ def main():
                 embeddings = OpenAIEmbeddings()
                 knowledge_base = FAISS.from_texts(chunks, embeddings)
                 progress.progress(40)
-
-                if user_question and ask_button_clicked:
-                    st.session_state.conversation_history.append(
-                        ('You', user_question))
-                    docs = knowledge_base.similarity_search(user_question)
-                    llm = OpenAI()
-                    chain = load_qa_chain(llm, chain_type="stuff")
-
-                    with get_openai_callback() as cb:
-                        response = chain.run(
-                            input_documents=docs, question=user_question)
-
-                    progress.progress(50)
-
-                    try:
-                        progress.progress(60)
-                        st.session_state.conversation_history.append(
-                            ('Bot', response))
-
-                    except Exception as e:
-                        st.error(f"An error occurred: {e}")
-
                 st.session_state.summary_detail = None
                 st.session_state.difficulty = None
                 if 'last_difficulty' not in st.session_state:
@@ -484,7 +492,7 @@ def main():
                 summary_expander = st.expander('Summary of PDF')
                 with summary_expander:
                     st.session_state.summary_detail = st.slider(
-                        'Set the detail level of your summary', 1, 5, 3)
+                        'Set the lenght of your summary', 1, 5, 3)
                     generate_summary = st.button("Generate Summary")
                     if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
                         st.session_state.last_summary_detail = st.session_state.summary_detail
@@ -492,12 +500,74 @@ def main():
                             summary = summarize_text(
                                 knowledge_base, st.session_state.summary_detail)
                             st.session_state.summary = summary
-                            st.write(summary)
+                            if generate_summary:
+                                st.write(summary)
                             db = FAISS.from_texts([summary], embeddings)
                             progress.progress(70)
                         else:
                             st.write("No summary available")
 
+                chat_expander = st.expander('Chat with your document')
+                with chat_expander:
+                    # Create a placeholder for the conversation history
+                    conversation_history_placeholder = st.empty()
+
+                    # Generate example questions
+                    if 'ex_questions' not in st.session_state:
+                        ex_questions = example_questions(st.session_state.summary)
+                        st.session_state.ex_questions = ex_questions
+                    else:
+                        ex_questions = st.session_state.ex_questions                
+
+                    
+                    with st.form(key='chat_form'):
+
+                        st.session_state.user_question = st.text_input("Ask a question about your PDF:", value=st.session_state.user_question)
+                        selected_question = st.selectbox(" ", ['What kind of questions could I ask?'] + st.session_state.ex_questions)
+
+                        submit_button = st.form_submit_button('Ask')
+                        if submit_button:
+                            if st.session_state.user_question:
+                                question = st.session_state.user_question
+                            elif selected_question:
+                                question = selected_question
+                            else:
+                                question = None
+
+                            if question:
+                                st.session_state.conversation_history.append(('You', question))
+                                docs = knowledge_base.similarity_search(question)
+                                llm = OpenAI()
+                                chain = load_qa_chain(llm, chain_type="stuff")
+
+                                with get_openai_callback() as cb:
+                                    response = chain.run(input_documents=docs, question=question)
+
+                                try:
+                                    st.session_state.conversation_history.append(('Bot', response))
+                                except Exception as e:
+                                    st.error(f"An error occurred: {e}")
+
+                                st.session_state.user_question = ""
+                                selected_question = ""
+                                st.session_state.ex_questions = ex_questions
+
+                            else:
+                                st.warning("Please enter a question or select an example question.")
+
+                        # Display the conversation history
+                        conversation_html = ""
+                        if st.session_state.conversation_history:
+                            for role, message in st.session_state.conversation_history:
+                                if role == 'You':
+                                    conversation_html += f"<p><b>{role}:</b> {message}</p>"
+                                else:
+                                    conversation_html += f"<p><b>🤖:</b> {message}</p>"
+
+                        conversation_history_placeholder.markdown(conversation_html, unsafe_allow_html=True)
+
+
+                
                 questions_expander = st.expander('Generated Questions')
                 with questions_expander:
                     st.session_state.difficulty = st.slider(
@@ -527,48 +597,58 @@ def main():
 
                     if st.session_state.questions:  # Check if questions exist
                         st.write('Generated Questions')
-                        for idx, question in enumerate(st.session_state.questions, start=1):
-                            st.write(f"Q{idx}: {question}")
-                            if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
-                                user_answer = st.session_state.answers[idx]['answer']
-                                if st.session_state.checked_answers[idx]['is_correct']:
-                                    st.markdown(
-                                        f"Your Answer for Q{idx}: **{user_answer}**")
-                                    st.success('Your answer is correct!')
-                                else:
-                                    st.error('Your answer is incorrect.')
-                                    st.markdown(
-                                        f"Your Answer for Q{idx}: **{user_answer}**")
-                                    st.markdown(
-                                        f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
-                                    st.markdown("---")  # Horizontal rule
+                        
+                    for idx, question in enumerate(st.session_state.questions, start=1):
+                        st.write(f"Q{idx}: {question}")
+                        user_answer = st.text_input(
+                            f"Your Answer for Q{idx}")
+                        st.session_state.answers[idx] = {
+                            'question': question, 'answer': user_answer}
+                        check_answere_button_placeholder = st.empty()
+                        check_answere_button = check_answere_button_placeholder.button(f'Check Answer {idx}')
 
-                            else:
-                                user_answer = st.text_input(
-                                    f"Your Answer for Q{idx}")
-                                st.session_state.answers[idx] = {
-                                    'question': question, 'answer': user_answer}
+                        if check_answere_button == False:
+                            while not check_answere_button:
+                                pass
 
-                        score = 0
+                        check_answere_button_placeholder.empty()
+                        is_correct, correct_answer = check_answer(
+                            question, user_answer, st.session_state.summary, embeddings)
+                        
+                        if is_correct:
+                            st.success("Your answer is correct!")
+                            st.markdown("---")  # Horizontal rule
 
-                        # Check All Answers button only displays if there are unchecked answers
-                        if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
-                            if st.button('Check All Answers'):
-                                for idx, data in st.session_state.answers.items():
-                                    question = data['question']
-                                    user_answer = data['answer']
-                                    is_correct, correct_answer = check_answer(
-                                        question, user_answer, st.session_state.summary, embeddings)
-                                    # Store the results instead of displaying them immediately
-                                    if 'checked_answers' not in st.session_state:
-                                        st.session_state.checked_answers = {}
-                                    st.session_state.checked_answers[idx] = {
-                                        'is_correct': is_correct, 'correct_answer': correct_answer}
+                        if is_correct == False:
+                            st.markdown("Your answer is **not** correct. The correct answer should be:")
+                            st.markdown(correct_answer)
+                            st.markdown("---")  # Horizontal rule
 
-                                # Rerun the script to refresh the display after checking all answers
-                                st.experimental_rerun()
 
-                        # Only display score and progress if all answers are checked
+                        # Store the results instead of displaying them immediately
+                        if 'checked_answers' not in st.session_state:
+                            st.session_state.checked_answers = {}
+                        st.session_state.checked_answers[idx] = {
+                            'is_correct': is_correct, 'correct_answer': correct_answer}
+                    
+                        next_question_button_placeholder = st.empty()
+                        if idx+1 is not 6:
+                            next_question_button = next_question_button_placeholder.button(f'Question {idx + 1}')
+                        
+                        if idx+1 is 6:
+                            next_question_button = next_question_button_placeholder.button('Check all answers')
+
+                        if next_question_button == False:
+                            while not next_question_button:
+                                pass
+                        
+                        next_question_button_placeholder.empty()
+
+                        # Rerun the script to refresh the display after checking all answers
+                        # st.experimental_rerun()
+                    
+                                    
+                    # Only display score and progress if all answers are checked
                         if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
                             score = len(
                                 [data for data in st.session_state.checked_answers.values() if data['is_correct']])
@@ -578,15 +658,9 @@ def main():
                             progress_percentage = score / \
                                 len(st.session_state.questions)
                             progress_bar.progress(progress_percentage)
-
                 db = None  # Initialize db
 
         elif filetype == 'vnd.openxmlformats-officedocument.presentationml.presentation':
-            user_question = st.sidebar.text_input(
-                "Ask a question about your PPT:", value=st.session_state.user_question)
-
-            ask_button_clicked = st.sidebar.button('Ask')
-
             if file is not None:
                 text = extract_text_from_pptx(file)
                 progress.progress(20)
@@ -604,29 +678,6 @@ def main():
                 knowledge_base = FAISS.from_texts(chunks, embeddings)
                 progress.progress(40)
 
-                if user_question and ask_button_clicked:
-                    st.session_state.conversation_history.append(
-                        ('You', user_question))
-                    docs = knowledge_base.similarity_search(user_question)
-                    llm = OpenAI()
-                    chain = load_qa_chain(llm, chain_type="stuff")
-
-                    with get_openai_callback() as cb:
-                        response = chain.run(
-                            input_documents=docs, question=user_question)
-
-                    progress.progress(50)
-
-                    try:
-                        progress.progress(60)
-                        st.session_state.conversation_history.append(
-                            ('Bot', response))
-
-                    except Exception as e:
-                        st.error(f"An error occurred: {e}")
-
-                    st.session_state.user_question = ""
-
                 st.session_state.summary_detail = None
                 st.session_state.difficulty = None
                 if 'last_difficulty' not in st.session_state:
@@ -637,7 +688,7 @@ def main():
                 summary_expander = st.expander('Summary of PDF')
                 with summary_expander:
                     st.session_state.summary_detail = st.slider(
-                        'Set the detail level of your summary', 1, 5, 3)
+                        'Set the lenght of your summary', 1, 5, 3)
                     generate_summary = st.button("Generate Summary")
                     if generate_summary or st.session_state.summary_detail != st.session_state.last_summary_detail:
                         st.session_state.last_summary_detail = st.session_state.summary_detail
@@ -645,11 +696,73 @@ def main():
                             summary = summarize_text(
                                 knowledge_base, st.session_state.summary_detail)
                             st.session_state.summary = summary
-                            st.write(summary)
+                            if generate_summary:
+                                st.write(summary)
                             db = FAISS.from_texts([summary], embeddings)
                             progress.progress(70)
                         else:
                             st.write("No summary available")
+
+                chat_expander = st.expander('Chat with your document')
+                with chat_expander:
+                    # Create a placeholder for the conversation history
+                    conversation_history_placeholder = st.empty()
+
+                    # Generate example questions
+                    if 'ex_questions' not in st.session_state:
+                        ex_questions = example_questions(st.session_state.summary)
+                        st.session_state.ex_questions = ex_questions
+                    else:
+                        ex_questions = st.session_state.ex_questions                
+
+                    
+                    with st.form(key='chat_form'):
+
+                        st.session_state.user_question = st.text_input("Ask a question about your PDF:", value=st.session_state.user_question)
+                        selected_question = st.selectbox(" ", ['What kind of questions could I ask?'] + st.session_state.ex_questions)
+
+                        submit_button = st.form_submit_button('Ask')
+                        if submit_button:
+                            if st.session_state.user_question:
+                                question = st.session_state.user_question
+                            elif selected_question:
+                                question = selected_question
+                            else:
+                                question = None
+
+                            if question:
+                                st.session_state.conversation_history.append(('You', question))
+                                docs = knowledge_base.similarity_search(question)
+                                llm = OpenAI()
+                                chain = load_qa_chain(llm, chain_type="stuff")
+
+                                with get_openai_callback() as cb:
+                                    response = chain.run(input_documents=docs, question=question)
+
+                                try:
+                                    st.session_state.conversation_history.append(('Bot', response))
+                                except Exception as e:
+                                    st.error(f"An error occurred: {e}")
+
+                                st.session_state.user_question = ""
+                                selected_question = ""
+                                st.session_state.ex_questions = ex_questions
+
+                            else:
+                                st.warning("Please enter a question or select an example question.")
+
+                        # Display the conversation history
+                        conversation_html = ""
+                        if st.session_state.conversation_history:
+                            for role, message in st.session_state.conversation_history:
+                                if role == 'You':
+                                    conversation_html += f"<p><b>{role}:</b> {message}</p>"
+                                else:
+                                    conversation_html += f"<p><b>🤖:</b> {message}</p>"
+
+                        conversation_history_placeholder.markdown(conversation_html, unsafe_allow_html=True)
+
+
 
                 questions_expander = st.expander('Generated Questions')
                 with questions_expander:
@@ -680,48 +793,58 @@ def main():
 
                     if st.session_state.questions:  # Check if questions exist
                         st.write('Generated Questions')
-                        for idx, question in enumerate(st.session_state.questions, start=1):
-                            st.write(f"Q{idx}: {question}")
-                            if 'checked_answers' in st.session_state and idx in st.session_state.checked_answers:
-                                user_answer = st.session_state.answers[idx]['answer']
-                                if st.session_state.checked_answers[idx]['is_correct']:
-                                    st.markdown(
-                                        f"Your Answer for Q{idx}: **{user_answer}**")
-                                    st.success('Your answer is correct!')
-                                else:
-                                    st.error('Your answer is incorrect.')
-                                    st.markdown(
-                                        f"Your Answer for Q{idx}: **{user_answer}**")
-                                    st.markdown(
-                                        f"Correct Answer: {st.session_state.checked_answers[idx]['correct_answer']}")
-                                    st.markdown("---")  # Horizontal rule
+                        
+                    for idx, question in enumerate(st.session_state.questions, start=1):
+                        st.write(f"Q{idx}: {question}")
+                        user_answer = st.text_input(
+                            f"Your Answer for Q{idx}")
+                        st.session_state.answers[idx] = {
+                            'question': question, 'answer': user_answer}
+                        check_answere_button_placeholder = st.empty()
+                        check_answere_button = check_answere_button_placeholder.button(f'Check Answer {idx}')
 
-                            else:
-                                user_answer = st.text_input(
-                                    f"Your Answer for Q{idx}")
-                                st.session_state.answers[idx] = {
-                                    'question': question, 'answer': user_answer}
+                        if check_answere_button == False:
+                            while not check_answere_button:
+                                pass
 
-                        score = 0
+                        check_answere_button_placeholder.empty()
+                        is_correct, correct_answer = check_answer(
+                            question, user_answer, st.session_state.summary, embeddings)
+                        
+                        if is_correct:
+                            st.success("Your answer is correct!")
+                            st.markdown("---")  # Horizontal rule
 
-                        # Check All Answers button only displays if there are unchecked answers
-                        if 'checked_answers' not in st.session_state or len(st.session_state.answers) != len(st.session_state.checked_answers):
-                            if st.button('Check All Answers'):
-                                for idx, data in st.session_state.answers.items():
-                                    question = data['question']
-                                    user_answer = data['answer']
-                                    is_correct, correct_answer = check_answer(
-                                        question, user_answer, st.session_state.summary, embeddings)
-                                    # Store the results instead of displaying them immediately
-                                    if 'checked_answers' not in st.session_state:
-                                        st.session_state.checked_answers = {}
-                                    st.session_state.checked_answers[idx] = {
-                                        'is_correct': is_correct, 'correct_answer': correct_answer}
+                        if is_correct == False:
+                            st.markdown("Your answer is **not** correct. The correct answer should be:")
+                            st.markdown(correct_answer)
+                            st.markdown("---")  # Horizontal rule
 
-                                # Rerun the script to refresh the display after checking all answers
-                                st.experimental_rerun()
+                        # Store the results instead of displaying them immediately
+                        if 'checked_answers' not in st.session_state:
+                            st.session_state.checked_answers = {}
+                        st.session_state.checked_answers[idx] = {
+                            'is_correct': is_correct, 'correct_answer': correct_answer}
+                    
+                        next_question_button_placeholder = st.empty()
+                        if idx+1 is not 6:
+                            next_question_button = next_question_button_placeholder.button(f'Question {idx + 1}')
+                        
+                        if idx+1 is 6:
+                            next_question_button = next_question_button_placeholder.button('Check all answers')
 
-                        # Only display score and progress if all answers are checked
+
+                        if next_question_button == False:
+                            while not next_question_button:
+                                pass
+                        
+                        next_question_button_placeholder.empty()
+
+                        # Rerun the script to refresh the display after checking all answers
+                        # st.experimental_rerun()
+                    
+                                    
+                    # Only display score and progress if all answers are checked
                         if 'checked_answers' in st.session_state and len(st.session_state.checked_answers) == len(st.session_state.questions):
                             score = len(
                                 [data for data in st.session_state.checked_answers.values() if data['is_correct']])
@@ -731,7 +854,6 @@ def main():
                             progress_percentage = score / \
                                 len(st.session_state.questions)
                             progress_bar.progress(progress_percentage)
-
                 db = None  # Initialize db
 
 
